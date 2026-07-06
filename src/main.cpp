@@ -445,7 +445,9 @@ void setup() {
 
   // I2C + MPU6050
   Wire.begin(21, 22);
+  delay(100); // Give MPU6050 time to power up
   mpu.initialize();
+  delay(50);
   mpuConnected = mpu.testConnection();
   if (mpuConnected) {
     Serial.println("[MPU] MPU6050 connected at 0x68");
