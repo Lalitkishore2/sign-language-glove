@@ -449,11 +449,13 @@ void setup() {
   
   // -- I2C Scanner for debugging --
   Serial.println("\n[I2C] Scanning for devices...");
+  bool foundAt68 = false;
   int nDevices = 0;
   for(byte address = 1; address < 127; address++ ) {
     Wire.beginTransmission(address);
     if (Wire.endTransmission() == 0) {
       Serial.printf("[I2C] Device found at address 0x%02X\n", address);
+      if (address == 0x68) foundAt68 = true;
       nDevices++;
     }
   }
@@ -463,8 +465,12 @@ void setup() {
   mpu.initialize();
   delay(50);
   mpuConnected = mpu.testConnection();
+  
   if (mpuConnected) {
-    Serial.println("[MPU] MPU6050 connected at 0x68");
+    Serial.println("[MPU] MPU6050 connected and verified (WHO_AM_I matched).");
+  } else if (foundAt68) {
+    Serial.println("[MPU] MPU6050 failed WHO_AM_I, but found on I2C bus! (Likely a clone chip). Forcing connection true.");
+    mpuConnected = true;
   } else {
     Serial.println("[MPU] MPU6050 NOT FOUND -- running WITHOUT gyroscope.");
     Serial.println("[MPU] IMU-based gestures will use flex sensors only.");
