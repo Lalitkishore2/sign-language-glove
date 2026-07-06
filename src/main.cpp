@@ -446,6 +446,20 @@ void setup() {
   // I2C + MPU6050
   Wire.begin(21, 22);
   delay(100); // Give MPU6050 time to power up
+  
+  // -- I2C Scanner for debugging --
+  Serial.println("\n[I2C] Scanning for devices...");
+  int nDevices = 0;
+  for(byte address = 1; address < 127; address++ ) {
+    Wire.beginTransmission(address);
+    if (Wire.endTransmission() == 0) {
+      Serial.printf("[I2C] Device found at address 0x%02X\n", address);
+      nDevices++;
+    }
+  }
+  if (nDevices == 0) Serial.println("[I2C] No I2C devices found! Check wiring (SDA=21, SCL=22).");
+  // -------------------------------
+
   mpu.initialize();
   delay(50);
   mpuConnected = mpu.testConnection();
