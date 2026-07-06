@@ -324,9 +324,10 @@ void runCalibration() {
 
   for (int i = 0; i < 5; i++) {
     baseline[i]   = sums[i] / 50;
-    // Estimate full-bend as baseline + 900 (approximately 22% of 12-bit ADC range)
-    // This value gets divided out in normalization; user can tune if needed.
-    full_bend[i]  = baseline[i] + 900;
+    // When flex sensors bend, their resistance increases. In a standard voltage divider
+    // with a pull-down resistor, this causes the voltage (and ADC reading) to DROP.
+    // Assuming a ~600 drop for a full bend. You can tune this per finger later.
+    full_bend[i]  = baseline[i] - 600;
   }
   calibrated = true;
 
@@ -344,10 +345,12 @@ void runCalibration() {
    ========================================================================= */
 void readFlexSensors(int rawOut[5], int normOut[5]) {
   for (int i = 0; i < 5; i++) {
-    rawOut[i] = analogRead(FLEX_PINS[i]);
-    // Clamp and normalize to 0–100
-    int clamped = constrain(rawOut[i], baseline[i], full_bend[i]);
-    normOut[i]  = map(clamped, baseline[i], full_bend[i], 0, 100);
+    int raw = analogRead(FLEX_PINS[i]);
+    rawOut[i] = raw;
+    // Map raw value to 0-100 percentage. map() handles inverted ranges automatically.
+    int mapped = map(raw, baseline[i], full_bend[i], 0, 100);
+    // Constrain the final percentage to 0-100
+    normOut[i] = constrain(mapped, 0, 100);
   }
 }
 
