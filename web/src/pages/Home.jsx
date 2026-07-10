@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, BookOpen, Activity, Cpu, Mic, Shield, Usb } from 'lucide-react';
+import { Sparkles, BookOpen, Activity, Cpu, Mic, Shield, Wifi } from 'lucide-react';
 import { connectGlove, disconnectGlove, isGloveConnected, onConnectionChange } from '../utils/GloveConnection';
 
 export default function Home({ setCurrentPage }) {
@@ -11,11 +11,17 @@ export default function Home({ setCurrentPage }) {
     });
   }, []);
 
-  const handleSerialToggle = async () => {
+  const handleWifiToggle = async () => {
     if (gloveConnected) {
       await disconnectGlove();
     } else {
-      await connectGlove();
+      const ip = prompt("Enter the IP address shown on the Glove's display (e.g. 192.168.1.50):");
+      if (ip) {
+        const success = await connectGlove(ip);
+        if (!success) {
+          alert(`Failed to connect to ${ip}. Make sure the glove is on the same network.`);
+        }
+      }
     }
   };
   return (
@@ -46,15 +52,15 @@ export default function Home({ setCurrentPage }) {
             </button>
             <button 
               className={`btn ${gloveConnected ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={handleSerialToggle}
+              onClick={handleWifiToggle}
               style={{
                 background: gloveConnected ? 'rgba(16, 185, 129, 0.1)' : undefined,
                 borderColor: gloveConnected ? 'var(--success)' : undefined
               }}
             >
-              <Usb size={20} color={gloveConnected ? "var(--success)" : "currentColor"} />
+              <Wifi size={20} color={gloveConnected ? "var(--success)" : "currentColor"} />
               <span style={{ color: gloveConnected ? 'var(--success)' : undefined }}>
-                {gloveConnected ? 'Glove Connected (USB)' : 'Connect Glove (USB)'}
+                {gloveConnected ? 'Glove Connected (WiFi)' : 'Connect Glove (WiFi)'}
               </span>
             </button>
           </div>

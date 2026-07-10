@@ -1,8 +1,8 @@
 /**
- * GloveConnection.js — Web Serial API utility for connecting to the ISL-Glove ESP32.
+ * GloveConnection.js — WebSockets API utility for connecting to the ISL-Glove ESP32 over WiFi.
  * 
  * Exposes a simple API:
- *   connectGlove()    → Prompts Serial port selection, returns connection object
+ *   connectGlove(ip)  → Connects to ws://[IP]:81/, returns connection state
  *   disconnectGlove() → Cleanly disconnects
  *   onGloveData(cb)   → Registers a callback for incoming sensor packets
  * 
@@ -10,9 +10,7 @@
  *   {"g":"MORNING","c":98,"f":[0,0,0,0,0],"r":1.2,"p":0.5}
  */
 
-let port = null;
-let reader = null;
-let keepReading = false;
+let ws = null;
 let dataCallback = null;
 let connectionCallback = null;
 
@@ -25,96 +23,87 @@ export function onConnectionChange(callback) {
 }
 
 export function isGloveConnected() {
-  return port !== null;
+  return ws !== null && ws.readyState === WebSocket.OPEN;
 }
 
-async function readLoop() {
-  const textDecoder = new TextDecoderStream();
-  const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-  reader = textDecoder.readable.getReader();
+export async function connectGlove(ip) {
+  if (!ip) {
+    console.error('[Glove] No IP address provided');
+    return false;
+  }
 
-  let partialLine = "";
+  return new Promise((resolve, reject) => {
+    try {
+      const wsUrl = `ws://${ip}:81/`;
+      console.log(`[Glove] Connecting to ${wsUrl}...`);
+      
+      ws = new WebSocket(wsUrl);
 
-  try {
-    while (keepReading) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (value) {
-        partialLine += value;
-        const lines = partialLine.split('\n');
-        partialLine = lines.pop(); // Keep the incomplete line for the next chunk
-        
-        for (const line of lines) {
-          const trimmed = line.trim();
+      ws.onopen = () => {
+        console.log('[Glove] Connected to WebSocket');
+        if (connectionCallback) connectionCallback(true);
+        resolve(true);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const trimmed = event.data.trim();
           if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-            try {
-              const data = JSON.parse(trimmed);
-              if (dataCallback) {
-                dataCallback({
-                  gesture: data.g || '',
-                  confidence: data.c || 0,
-                  flex: data.f || [0, 0, 0, 0, 0],
-                  roll: data.r || 0,
-                  pitch: data.p || 0,
-                  raw: trimmed
-                });
-              }
-            } catch (e) {
-              // Ignore parse errors from partial/corrupted lines
+            const data = JSON.parse(trimmed);
+            if (dataCallback) {
+              dataCallback({
+                gesture: data.g || '',
+                confidence: data.c || 0,
+                flex: data.f || [0, 0, 0, 0, 0],
+                roll: data.r || 0,
+                pitch: data.p || 0,
+                raw: trimmed
+              });
             }
           }
+        } catch (e) {
+          // Ignore parse errors
         }
-      }
+      };
+
+      ws.onclose = () => {
+        console.log('[Glove] Disconnected from WebSocket');
+        ws = null;
+        if (connectionCallback) connectionCallback(false);
+      };
+
+      ws.onerror = (error) => {
+        console.error('[Glove] WebSocket error:', error);
+        if (ws && ws.readyState !== WebSocket.OPEN) {
+          ws = null;
+          if (connectionCallback) connectionCallback(false);
+          resolve(false);
+        }
+      };
+      
+      // Timeout after 5 seconds if connection fails
+      setTimeout(() => {
+        if (ws && ws.readyState !== WebSocket.OPEN) {
+          ws.close();
+          ws = null;
+          resolve(false);
+        }
+      }, 5000);
+
+    } catch (error) {
+      console.error('[Glove] Connection failed:', error);
+      ws = null;
+      if (connectionCallback) connectionCallback(false);
+      resolve(false);
     }
-  } catch (error) {
-    console.error("[Glove] Serial read error:", error);
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-export async function connectGlove() {
-  if (!("serial" in navigator)) {
-    alert("Web Serial API is not supported by your browser. Try Google Chrome or Microsoft Edge on Desktop.");
-    return false;
-  }
-
-  try {
-    port = await navigator.serial.requestPort();
-    await port.open({ baudRate: 115200 }); // Must match ESP32 Serial.begin(115200)
-
-    keepReading = true;
-    readLoop();
-
-    console.log('[Glove] Connected to Serial Port');
-    if (connectionCallback) connectionCallback(true);
-    return true;
-  } catch (error) {
-    console.error('[Glove] Serial connection failed:', error);
-    port = null;
-    if (connectionCallback) connectionCallback(false);
-    return false;
-  }
+  });
 }
 
 export async function disconnectGlove() {
-  if (port) {
-    keepReading = false;
-    if (reader) {
-      await reader.cancel();
-    }
-    await port.close();
-    port = null;
-    console.log('[Glove] Disconnected from Serial Port');
+  if (ws) {
+    ws.close();
+    ws = null;
+    console.log('[Glove] Disconnected');
   }
   if (connectionCallback) connectionCallback(false);
-}
-
-// Automatically handle disconnection if the USB is unplugged
-if ("serial" in navigator) {
-  navigator.serial.addEventListener("disconnect", (event) => {
-    if (port && event.target === port) {
-      disconnectGlove();
-    }
-  });
 }

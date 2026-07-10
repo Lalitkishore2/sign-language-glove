@@ -29,6 +29,16 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <math.h>
+#include <WiFi.h>
+#include <WebSocketsServer.h>
+
+/* =========================================================================
+   WIFI & WEBSOCKETS CONFIGURATION
+   ========================================================================= */
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+WebSocketsServer webSocket = WebSocketsServer(81);
 
 /* =========================================================================
    PIN DEFINITIONS
@@ -585,12 +595,53 @@ void setup() {
   // Run calibration
   runCalibration();
   appState = STATE_RECOGNIZING;
+
+  // Initialize WiFi
+  tft.fillScreen(ST7735_BLACK);
+  tft.setCursor(5, 20);
+  tft.setTextColor(ST7735_WHITE);
+  tft.setTextSize(1);
+  tft.print("Connecting to WiFi...");
+  
+  WiFi.begin(ssid, password);
+  int dots = 0;
+  while (WiFi.status() != WL_CONNECTED && dots < 20) {
+    delay(500);
+    Serial.print(".");
+    tft.print(".");
+    dots++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n[WiFi] Connected!");
+    Serial.print("[WiFi] IP: ");
+    Serial.println(WiFi.localIP());
+    tft.fillScreen(ST7735_BLACK);
+    tft.setCursor(5, 20);
+    tft.print("WiFi Connected!");
+    tft.setCursor(5, 40);
+    tft.print("IP: ");
+    tft.print(WiFi.localIP());
+    delay(2000);
+  } else {
+    Serial.println("\n[WiFi] Failed to connect.");
+    tft.fillScreen(ST7735_BLACK);
+    tft.setCursor(5, 20);
+    tft.setTextColor(ST7735_RED);
+    tft.print("WiFi Failed!");
+    delay(2000);
+  }
+
+  // Initialize WebSockets
+  webSocket.begin();
 }
 
 /* =========================================================================
    LOOP
    ========================================================================= */
 void loop() {
+  webSocket.loop();
+  
   // Handle serial commands
   if (Serial.available()) {
     char cmd = Serial.read();
@@ -643,17 +694,22 @@ void loop() {
 
   drawDashboard(currentGesture, normFlex, roll, pitch, confidence);
 
-  // Serial debug & Web App JSON output
+  // Serial debug & WebSockets JSON output
   static unsigned long lastDebugPrint = 0;
-  if (millis() - lastDebugPrint > 100) { // Send data at 10Hz to Web Serial
+  if (millis() - lastDebugPrint > 100) { // Send data at 10Hz to WebSockets
     lastDebugPrint = millis();
     
-    // Print the JSON packet for the Web App
-    Serial.printf("{\"g\":\"%s\",\"c\":%d,\"f\":[%d,%d,%d,%d,%d],\"r\":%.1f,\"p\":%.1f}\n",
+    // Create the JSON packet for the Web App
+    char jsonPacket[150];
+    snprintf(jsonPacket, sizeof(jsonPacket),
+      "{\"g\":\"%s\",\"c\":%d,\"f\":[%d,%d,%d,%d,%d],\"r\":%.1f,\"p\":%.1f}",
       currentGesture.length() > 0 ? currentGesture.c_str() : "",
       (int)(confidence * 100.0f),
       normFlex[0], normFlex[1], normFlex[2], normFlex[3], normFlex[4],
       roll, pitch);
+      
+    // Broadcast via WebSockets
+    webSocket.broadcastTXT(jsonPacket);
       
     // Print human-readable debug info every 500ms
     static unsigned long lastHumanPrint = 0;
