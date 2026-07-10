@@ -25,6 +25,10 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <math.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 
 /* =========================================================================
    PIN DEFINITIONS
@@ -50,6 +54,29 @@ MPU6050 mpu;
 
 // Forward Declarations
 void readIMURaw(float &roll, float &pitch);
+
+/* =========================================================================
+   BLE CONFIGURATION
+   ========================================================================= */
+#define BLE_DEVICE_NAME   "ISL-Glove"
+#define SERVICE_UUID      "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHAR_UUID         "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+
+BLEServer* pServer = nullptr;
+BLECharacteristic* pCharacteristic = nullptr;
+bool bleDeviceConnected = false;
+bool bleOldConnected = false;
+
+class GloveServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) {
+    bleDeviceConnected = true;
+    Serial.println("[BLE] Client connected");
+  }
+  void onDisconnect(BLEServer* pServer) {
+    bleDeviceConnected = false;
+    Serial.println("[BLE] Client disconnected");
+  }
+};
 
 /* =========================================================================
    GESTURE SYSTEM
@@ -581,6 +608,26 @@ void setup() {
   // Run calibration
   runCalibration();
   appState = STATE_RECOGNIZING;
+
+  // Initialize BLE
+  BLEDevice::init(BLE_DEVICE_NAME);
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new GloveServerCallbacks());
+
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+  pCharacteristic = pService->createCharacteristic(
+    CHAR_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  pCharacteristic->addDescriptor(new BLE2902());
+  pService->start();
+
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);
+  BLEDevice::startAdvertising();
+  Serial.println("[BLE] Advertising as '" BLE_DEVICE_NAME "'");
 }
 
 /* =========================================================================
@@ -638,6 +685,30 @@ void loop() {
   }
 
   drawDashboard(currentGesture, normFlex, roll, pitch, confidence);
+
+  // BLE: Send sensor data as JSON notification
+  if (bleDeviceConnected) {
+    char bleJson[128];
+    snprintf(bleJson, sizeof(bleJson),
+      "{\"g\":\"%s\",\"c\":%d,\"f\":[%d,%d,%d,%d,%d],\"r\":%.1f,\"p\":%.1f}",
+      currentGesture.length() > 0 ? currentGesture.c_str() : "",
+      (int)(confidence * 100.0f),
+      normFlex[0], normFlex[1], normFlex[2], normFlex[3], normFlex[4],
+      roll, pitch);
+    pCharacteristic->setValue(bleJson);
+    pCharacteristic->notify();
+  }
+
+  // BLE: Restart advertising if client disconnected
+  if (!bleDeviceConnected && bleOldConnected) {
+    delay(500);
+    pServer->startAdvertising();
+    Serial.println("[BLE] Restarting advertising...");
+    bleOldConnected = false;
+  }
+  if (bleDeviceConnected && !bleOldConnected) {
+    bleOldConnected = true;
+  }
 
   // Serial debug
   // Print raw ADC + normalized values for debugging
