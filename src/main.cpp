@@ -212,6 +212,27 @@ void drawCalibrationDone() {
 }
 
 /* =========================================================================
+   SCREEN: CALIBRATION ERROR
+   ========================================================================= */
+void drawCalibrationErrorScreen() {
+  canvas.fillScreen(0x8000); // Red background
+  canvas.fillRect(0, 0, 160, 18, 0x5000); // Darker red header
+  drawCentered("CALIBRATION ERROR", 4, 1, 0xFFFF);
+  canvas.drawFastHLine(0, 18, 160, 0xF800);
+
+  drawCentered("Flat & Fist poses", 32, 1, 0xFFFF);
+  drawCentered("were too similar!", 46, 1, 0xFFFF);
+  
+  drawCentered("Please ensure you", 70, 1, 0xBDF7);
+  drawCentered("bend all fingers", 84, 1, 0xBDF7);
+  drawCentered("during Step 2.", 98, 1, 0xBDF7);
+
+  drawCentered("Retrying in 4s...", 114, 1, 0xFD20); // Yellow text
+  
+  flushCanvas();
+}
+
+/* =========================================================================
    SCREEN: MAIN GESTURE DASHBOARD
    ========================================================================= */
 void drawDashboard(const String &gesture, int normalizedFlex[5],
@@ -307,52 +328,72 @@ void drawTestScreen(int rawFlex[5], int normalizedFlex[5], float roll, float pit
    CALIBRATION
    ========================================================================= */
 void runCalibration() {
-  // Step 1: FLAT & OPEN
-  for (int s = 3; s >= 1; s--) {
-    drawCalibrationScreen("Hold hand FLAT & OPEN", "(all fingers straight)", s);
-    delay(1000);
-  }
+  bool success = false;
 
-  // Take 50 samples and average for baseline
-  long flatSums[5] = {0, 0, 0, 0, 0};
-  for (int sample = 0; sample < 50; sample++) {
-    for (int i = 0; i < 5; i++) {
-      flatSums[i] += analogRead(FLEX_PINS[i]);
+  while (!success) {
+    // Step 1: FLAT & OPEN
+    for (int s = 5; s >= 1; s--) {
+      drawCalibrationScreen("Hold hand FLAT & OPEN", "(all fingers straight)", s);
+      delay(1000);
     }
-    delay(20);
-  }
-  for (int i = 0; i < 5; i++) {
-    baseline[i] = flatSums[i] / 50;
-  }
 
-  // Quick visual flash to alert user to shift pose
-  tft.fillScreen(ST77XX_BLACK);
-  delay(500);
-
-  // Step 2: TIGHT FIST
-  for (int s = 3; s >= 1; s--) {
-    drawCalibrationScreen("Make a TIGHT FIST", "(curl all fingers)", s);
-    delay(1000);
-  }
-
-  // Take 50 samples and average for full_bend
-  long fistSums[5] = {0, 0, 0, 0, 0};
-  for (int sample = 0; sample < 50; sample++) {
-    for (int i = 0; i < 5; i++) {
-      fistSums[i] += analogRead(FLEX_PINS[i]);
+    // Take 50 samples and average for baseline
+    long flatSums[5] = {0, 0, 0, 0, 0};
+    for (int sample = 0; sample < 50; sample++) {
+      for (int i = 0; i < 5; i++) {
+        flatSums[i] += analogRead(FLEX_PINS[i]);
+      }
+      delay(20);
     }
-    delay(20);
-  }
-  for (int i = 0; i < 5; i++) {
-    int rawFist = fistSums[i] / 50;
-    int rawDiff = rawFist - baseline[i];
+    for (int i = 0; i < 5; i++) {
+      baseline[i] = flatSums[i] / 50;
+    }
+
+    // Quick visual flash to alert user to shift pose
+    tft.fillScreen(ST77XX_BLACK);
+    delay(500);
+
+    // Step 2: TIGHT FIST
+    for (int s = 5; s >= 1; s--) {
+      drawCalibrationScreen("Make a TIGHT FIST", "(curl all fingers)", s);
+      delay(1000);
+    }
+
+    // Take 50 samples and average for temp_fist
+    long fistSums[5] = {0, 0, 0, 0, 0};
+    for (int sample = 0; sample < 50; sample++) {
+      for (int i = 0; i < 5; i++) {
+        fistSums[i] += analogRead(FLEX_PINS[i]);
+      }
+      delay(20);
+    }
+
+    // Check if calibration is valid
+    bool failed = false;
+    int temp_fist[5];
     
-    // Guard: if baseline and rawFist are too close (difference < 100 units),
-    // fall back to default baseline - 600 direction to prevent division-by-zero or low sensitivity issues.
-    if (abs(rawDiff) < 100) {
-      full_bend[i] = baseline[i] - 600;
+    Serial.println("\n[CAL] Verifying Calibration...");
+    for (int i = 0; i < 5; i++) {
+      temp_fist[i] = fistSums[i] / 50;
+      int diff = abs(temp_fist[i] - baseline[i]);
+      Serial.printf("  Finger %d: Flat=%d, Fist(Raw)=%d, Diff=%d\n", i, baseline[i], temp_fist[i], diff);
+      
+      // If the difference is less than 150 ADC units, fail the calibration
+      if (diff < 150) {
+        failed = true;
+      }
+    }
+
+    if (failed) {
+      Serial.println("[CAL] Error: Flat and Fist values are too similar! Retrying...");
+      drawCalibrationErrorScreen();
+      delay(4000);
     } else {
-      full_bend[i] = rawFist;
+      // Valid calibration! Save temp_fist to full_bend
+      for (int i = 0; i < 5; i++) {
+        full_bend[i] = temp_fist[i];
+      }
+      success = true;
     }
   }
 
@@ -360,9 +401,8 @@ void runCalibration() {
 
   Serial.println("\n[CAL] Two-Step Calibration complete:");
   for (int i = 0; i < 5; i++) {
-    int rawFist = fistSums[i] / 50;
-    Serial.printf("  Finger %d: Flat=%d  Fist(Raw)=%d  Diff=%d  -> Final full_bend=%d\n",
-                  i, baseline[i], rawFist, rawFist - baseline[i], full_bend[i]);
+    Serial.printf("  Finger %d: baseline (flat)=%d  full_bend (fist)=%d\n",
+                  i, baseline[i], full_bend[i]);
   }
 
   drawCalibrationDone();
