@@ -344,12 +344,15 @@ void runCalibration() {
     delay(20);
   }
   for (int i = 0; i < 5; i++) {
-    full_bend[i] = fistSums[i] / 50;
+    int rawFist = fistSums[i] / 50;
+    int rawDiff = rawFist - baseline[i];
     
-    // Guard: if baseline and full_bend are too close (difference < 100 units),
+    // Guard: if baseline and rawFist are too close (difference < 100 units),
     // fall back to default baseline - 600 direction to prevent division-by-zero or low sensitivity issues.
-    if (abs(baseline[i] - full_bend[i]) < 100) {
+    if (abs(rawDiff) < 100) {
       full_bend[i] = baseline[i] - 600;
+    } else {
+      full_bend[i] = rawFist;
     }
   }
 
@@ -357,8 +360,9 @@ void runCalibration() {
 
   Serial.println("\n[CAL] Two-Step Calibration complete:");
   for (int i = 0; i < 5; i++) {
-    Serial.printf("  Finger %d: baseline (flat)=%d  full_bend (fist)=%d\n",
-                  i, baseline[i], full_bend[i]);
+    int rawFist = fistSums[i] / 50;
+    Serial.printf("  Finger %d: Flat=%d  Fist(Raw)=%d  Diff=%d  -> Final full_bend=%d\n",
+                  i, baseline[i], rawFist, rawFist - baseline[i], full_bend[i]);
   }
 
   drawCalibrationDone();
