@@ -30,8 +30,8 @@
    PIN DEFINITIONS
    ========================================================================= */
 // Flex Sensors (Analog Input)
-#define FLEX_THUMB  32
-#define FLEX_INDEX  33
+#define FLEX_THUMB  33
+#define FLEX_INDEX  32
 #define FLEX_MIDDLE 34
 #define FLEX_RING   35
 #define FLEX_LITTLE 36  // VP — input only, external 68kΩ pull-down required
