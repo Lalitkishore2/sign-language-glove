@@ -48,6 +48,9 @@ Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 GFXcanvas16 canvas(160, 128); // Landscape 160x128 buffer
 MPU6050 mpu;
 
+// Forward Declarations
+void readIMURaw(float &roll, float &pitch);
+
 /* =========================================================================
    GESTURE SYSTEM
    ========================================================================= */
@@ -120,6 +123,8 @@ int baseline[5]      = {0, 0, 0, 0, 0};
 int full_bend[5]     = {0, 0, 0, 0, 0};
 bool calibrated      = false;
 bool mpuConnected    = false; // Tracks whether MPU6050 was found at boot
+float rollOffset     = 0.0f;  // Software IMU offsets
+float pitchOffset    = 0.0f;
 
 // GPIO pin array for indexed access
 const int FLEX_PINS[5] = {FLEX_THUMB, FLEX_INDEX, FLEX_MIDDLE, FLEX_RING, FLEX_LITTLE};
@@ -337,16 +342,28 @@ void runCalibration() {
       delay(1000);
     }
 
-    // Take 50 samples and average for baseline
+    // Take 50 samples and average for baseline and IMU offsets
     long flatSums[5] = {0, 0, 0, 0, 0};
+    float rollSum = 0.0f;
+    float pitchSum = 0.0f;
     for (int sample = 0; sample < 50; sample++) {
       for (int i = 0; i < 5; i++) {
         flatSums[i] += analogRead(FLEX_PINS[i]);
+      }
+      if (mpuConnected) {
+        float r, p;
+        readIMURaw(r, p);
+        rollSum += r;
+        pitchSum += p;
       }
       delay(20);
     }
     for (int i = 0; i < 5; i++) {
       baseline[i] = flatSums[i] / 50;
+    }
+    if (mpuConnected) {
+      rollOffset = rollSum / 50.0f;
+      pitchOffset = pitchSum / 50.0f;
     }
 
     // Quick visual flash to alert user to shift pose
@@ -404,6 +421,10 @@ void runCalibration() {
     Serial.printf("  Finger %d: baseline (flat)=%d  full_bend (fist)=%d\n",
                   i, baseline[i], full_bend[i]);
   }
+  if (mpuConnected) {
+    Serial.printf("  MPU6050 Offsets: RollOffset=%.2f  PitchOffset=%.2f\n",
+                  rollOffset, pitchOffset);
+  }
 
   drawCalibrationDone();
 }
@@ -422,7 +443,7 @@ void readFlexSensors(int rawOut[5], int normOut[5]) {
   }
 }
 
-void readIMU(float &roll, float &pitch) {
+void readIMURaw(float &roll, float &pitch) {
   if (!mpuConnected) {
     roll = 0.0f;
     pitch = 0.0f;
@@ -438,6 +459,14 @@ void readIMU(float &roll, float &pitch) {
 
   roll  = atan2(ayG, azG) * 180.0f / PI;
   pitch = atan2(-axG, sqrt(ayG * ayG + azG * azG)) * 180.0f / PI;
+}
+
+void readIMU(float &roll, float &pitch) {
+  readIMURaw(roll, pitch);
+  if (mpuConnected) {
+    roll -= rollOffset;
+    pitch -= pitchOffset;
+  }
 }
 
 /* =========================================================================
