@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Home, Sparkles, BookOpen, Image, Activity, Wand2, Bluetooth } from 'lucide-react';
+import { Home, Sparkles, BookOpen, Image, Activity, Wand2, Usb } from 'lucide-react';
 import { isGloveConnected, onConnectionChange } from '../utils/GloveConnection';
 
 export default function Navbar({ currentPage, setCurrentPage }) {
@@ -44,9 +44,9 @@ export default function Navbar({ currentPage, setCurrentPage }) {
         })}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '1rem', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '20px' }}>
-        <Bluetooth size={16} color={gloveConnected ? 'var(--success)' : 'var(--text-muted)'} />
+        <Usb size={16} color={gloveConnected ? 'var(--success)' : 'var(--text-muted)'} />
         <span style={{ fontSize: '0.75rem', fontWeight: 600, color: gloveConnected ? 'var(--success)' : 'var(--text-muted)' }}>
-          {gloveConnected ? 'Glove Connected' : 'Glove Disconnected'}
+          {gloveConnected ? 'Glove Connected (USB)' : 'Glove Disconnected'}
         </span>
       </div>
     </nav>

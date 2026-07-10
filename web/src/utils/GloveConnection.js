@@ -1,8 +1,8 @@
 /**
- * GloveConnection.js — Web Bluetooth API utility for connecting to the ISL-Glove ESP32.
+ * GloveConnection.js — Web Serial API utility for connecting to the ISL-Glove ESP32.
  * 
  * Exposes a simple API:
- *   connectGlove()    → Prompts BLE pairing, returns connection object
+ *   connectGlove()    → Prompts Serial port selection, returns connection object
  *   disconnectGlove() → Cleanly disconnects
  *   onGloveData(cb)   → Registers a callback for incoming sensor packets
  * 
@@ -10,35 +10,11 @@
  *   {"g":"MORNING","c":98,"f":[0,0,0,0,0],"r":1.2,"p":0.5}
  */
 
-const SERVICE_UUID      = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-const CHAR_UUID         = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-
-let device = null;
-let characteristic = null;
+let port = null;
+let reader = null;
+let keepReading = false;
 let dataCallback = null;
 let connectionCallback = null;
-
-function handleNotification(event) {
-  const value = event.target.value;
-  const decoder = new TextDecoder('utf-8');
-  const jsonStr = decoder.decode(value);
-  
-  try {
-    const data = JSON.parse(jsonStr);
-    if (dataCallback) {
-      dataCallback({
-        gesture: data.g || '',
-        confidence: data.c || 0,
-        flex: data.f || [0, 0, 0, 0, 0],
-        roll: data.r || 0,
-        pitch: data.p || 0,
-        raw: jsonStr
-      });
-    }
-  } catch (e) {
-    // Silently ignore malformed packets
-  }
-}
 
 export function onGloveData(callback) {
   dataCallback = callback;
@@ -49,50 +25,96 @@ export function onConnectionChange(callback) {
 }
 
 export function isGloveConnected() {
-  return device?.gatt?.connected || false;
+  return port !== null;
+}
+
+async function readLoop() {
+  const textDecoder = new TextDecoderStream();
+  const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+  reader = textDecoder.readable.getReader();
+
+  let partialLine = "";
+
+  try {
+    while (keepReading) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) {
+        partialLine += value;
+        const lines = partialLine.split('\n');
+        partialLine = lines.pop(); // Keep the incomplete line for the next chunk
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            try {
+              const data = JSON.parse(trimmed);
+              if (dataCallback) {
+                dataCallback({
+                  gesture: data.g || '',
+                  confidence: data.c || 0,
+                  flex: data.f || [0, 0, 0, 0, 0],
+                  roll: data.r || 0,
+                  pitch: data.p || 0,
+                  raw: trimmed
+                });
+              }
+            } catch (e) {
+              // Ignore parse errors from partial/corrupted lines
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error("[Glove] Serial read error:", error);
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export async function connectGlove() {
+  if (!("serial" in navigator)) {
+    alert("Web Serial API is not supported by your browser. Try Google Chrome or Microsoft Edge on Desktop.");
+    return false;
+  }
+
   try {
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ name: 'ISL-Glove' }],
-      optionalServices: [SERVICE_UUID]
-    });
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 }); // Must match ESP32 Serial.begin(115200)
 
-    device.addEventListener('gattserverdisconnected', () => {
-      console.log('[Glove] Disconnected');
-      characteristic = null;
-      if (connectionCallback) connectionCallback(false);
-    });
+    keepReading = true;
+    readLoop();
 
-    const server = await device.gatt.connect();
-    const service = await server.getPrimaryService(SERVICE_UUID);
-    characteristic = await service.getCharacteristic(CHAR_UUID);
-
-    await characteristic.startNotifications();
-    characteristic.addEventListener('characteristicvaluechanged', handleNotification);
-
-    console.log('[Glove] Connected and listening for notifications');
+    console.log('[Glove] Connected to Serial Port');
     if (connectionCallback) connectionCallback(true);
     return true;
   } catch (error) {
-    console.error('[Glove] Connection failed:', error);
+    console.error('[Glove] Serial connection failed:', error);
+    port = null;
     if (connectionCallback) connectionCallback(false);
     return false;
   }
 }
 
 export async function disconnectGlove() {
-  if (characteristic) {
-    try {
-      characteristic.removeEventListener('characteristicvaluechanged', handleNotification);
-      await characteristic.stopNotifications();
-    } catch (e) { /* ignore */ }
-    characteristic = null;
+  if (port) {
+    keepReading = false;
+    if (reader) {
+      await reader.cancel();
+    }
+    await port.close();
+    port = null;
+    console.log('[Glove] Disconnected from Serial Port');
   }
-  if (device?.gatt?.connected) {
-    device.gatt.disconnect();
-  }
-  device = null;
   if (connectionCallback) connectionCallback(false);
+}
+
+// Automatically handle disconnection if the USB is unplugged
+if ("serial" in navigator) {
+  navigator.serial.addEventListener("disconnect", (event) => {
+    if (port && event.target === port) {
+      disconnectGlove();
+    }
+  });
 }

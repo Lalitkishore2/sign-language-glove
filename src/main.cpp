@@ -22,13 +22,13 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 #include <MPU6050.h>
+#include <Arduino.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7735.h>
+#include <MPU6050.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <math.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
 
 /* =========================================================================
    PIN DEFINITIONS
@@ -54,29 +54,6 @@ MPU6050 mpu;
 
 // Forward Declarations
 void readIMURaw(float &roll, float &pitch);
-
-/* =========================================================================
-   BLE CONFIGURATION
-   ========================================================================= */
-#define BLE_DEVICE_NAME   "ISL-Glove"
-#define SERVICE_UUID      "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHAR_UUID         "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-
-BLEServer* pServer = nullptr;
-BLECharacteristic* pCharacteristic = nullptr;
-bool bleDeviceConnected = false;
-bool bleOldConnected = false;
-
-class GloveServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) {
-    bleDeviceConnected = true;
-    Serial.println("[BLE] Client connected");
-  }
-  void onDisconnect(BLEServer* pServer) {
-    bleDeviceConnected = false;
-    Serial.println("[BLE] Client disconnected");
-  }
-};
 
 /* =========================================================================
    GESTURE SYSTEM
@@ -608,26 +585,6 @@ void setup() {
   // Run calibration
   runCalibration();
   appState = STATE_RECOGNIZING;
-
-  // Initialize BLE
-  BLEDevice::init(BLE_DEVICE_NAME);
-  pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new GloveServerCallbacks());
-
-  BLEService *pService = pServer->createService(SERVICE_UUID);
-  pCharacteristic = pService->createCharacteristic(
-    CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
-  );
-  pCharacteristic->addDescriptor(new BLE2902());
-  pService->start();
-
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);
-  BLEDevice::startAdvertising();
-  Serial.println("[BLE] Advertising as '" BLE_DEVICE_NAME "'");
 }
 
 /* =========================================================================
@@ -686,41 +643,29 @@ void loop() {
 
   drawDashboard(currentGesture, normFlex, roll, pitch, confidence);
 
-  // BLE: Send sensor data as JSON notification
-  if (bleDeviceConnected) {
-    char bleJson[128];
-    snprintf(bleJson, sizeof(bleJson),
-      "{\"g\":\"%s\",\"c\":%d,\"f\":[%d,%d,%d,%d,%d],\"r\":%.1f,\"p\":%.1f}",
+  // Serial debug & Web App JSON output
+  static unsigned long lastDebugPrint = 0;
+  if (millis() - lastDebugPrint > 100) { // Send data at 10Hz to Web Serial
+    lastDebugPrint = millis();
+    
+    // Print the JSON packet for the Web App
+    Serial.printf("{\"g\":\"%s\",\"c\":%d,\"f\":[%d,%d,%d,%d,%d],\"r\":%.1f,\"p\":%.1f}\n",
       currentGesture.length() > 0 ? currentGesture.c_str() : "",
       (int)(confidence * 100.0f),
       normFlex[0], normFlex[1], normFlex[2], normFlex[3], normFlex[4],
       roll, pitch);
-    pCharacteristic->setValue(bleJson);
-    pCharacteristic->notify();
-  }
-
-  // BLE: Restart advertising if client disconnected
-  if (!bleDeviceConnected && bleOldConnected) {
-    delay(500);
-    pServer->startAdvertising();
-    Serial.println("[BLE] Restarting advertising...");
-    bleOldConnected = false;
-  }
-  if (bleDeviceConnected && !bleOldConnected) {
-    bleOldConnected = true;
-  }
-
-  // Serial debug
-  // Print raw ADC + normalized values for debugging
-  static unsigned long lastDebugPrint = 0;
-  if (millis() - lastDebugPrint > 500) { // Print every 500ms to avoid spam
-    lastDebugPrint = millis();
-    Serial.printf("[RAW]   T:%4d I:%4d M:%4d R:%4d L:%4d\n",
-                  rawFlex[0], rawFlex[1], rawFlex[2], rawFlex[3], rawFlex[4]);
-    Serial.printf("[NORM]  T:%3d I:%3d M:%3d R:%3d L:%3d | R:%.1f P:%.1f | %s (%.0f%%)\n",
-                  normFlex[0], normFlex[1], normFlex[2], normFlex[3], normFlex[4],
-                  roll, pitch,
-                  currentGesture.length() > 0 ? currentGesture.c_str() : "---",
-                  confidence * 100.0f);
+      
+    // Print human-readable debug info every 500ms
+    static unsigned long lastHumanPrint = 0;
+    if (millis() - lastHumanPrint > 500) {
+      lastHumanPrint = millis();
+      Serial.printf("[RAW]   T:%4d I:%4d M:%4d R:%4d L:%4d\n",
+                    rawFlex[0], rawFlex[1], rawFlex[2], rawFlex[3], rawFlex[4]);
+      Serial.printf("[NORM]  T:%3d I:%3d M:%3d R:%3d L:%3d | R:%.1f P:%.1f | %s (%.0f%%)\n",
+                    normFlex[0], normFlex[1], normFlex[2], normFlex[3], normFlex[4],
+                    roll, pitch,
+                    currentGesture.length() > 0 ? currentGesture.c_str() : "---",
+                    confidence * 100.0f);
+    }
   }
 }
