@@ -166,7 +166,7 @@ void flushCanvas() {
 /* =========================================================================
    SCREEN: CALIBRATION COUNTDOWN
    ========================================================================= */
-void drawCalibrationScreen(int secondsLeft) {
+void drawCalibrationScreen(const String &stepTitle, const String &instruction, int secondsLeft) {
   canvas.fillScreen(0x0863); // Deep blue-gray
 
   // Header
@@ -175,8 +175,8 @@ void drawCalibrationScreen(int secondsLeft) {
   canvas.drawFastHLine(0, 18, 160, 0x07FF);
 
   // Instructions
-  drawCentered("Hold hand FLAT & OPEN", 28, 1, 0xFFFF);
-  drawCentered("(all fingers straight)", 42, 1, 0xBDF7);
+  drawCentered(stepTitle, 28, 1, 0xFFFF);
+  drawCentered(instruction, 42, 1, 0xBDF7);
 
   // Countdown
   String countStr = String(secondsLeft);
@@ -307,33 +307,57 @@ void drawTestScreen(int rawFlex[5], int normalizedFlex[5], float roll, float pit
    CALIBRATION
    ========================================================================= */
 void runCalibration() {
-  // Countdown 3 seconds
+  // Step 1: FLAT & OPEN
   for (int s = 3; s >= 1; s--) {
-    drawCalibrationScreen(s);
+    drawCalibrationScreen("Hold hand FLAT & OPEN", "(all fingers straight)", s);
     delay(1000);
   }
 
-  // Take 50 samples and average
-  long sums[5] = {0, 0, 0, 0, 0};
+  // Take 50 samples and average for baseline
+  long flatSums[5] = {0, 0, 0, 0, 0};
   for (int sample = 0; sample < 50; sample++) {
     for (int i = 0; i < 5; i++) {
-      sums[i] += analogRead(FLEX_PINS[i]);
+      flatSums[i] += analogRead(FLEX_PINS[i]);
     }
     delay(20);
   }
-
   for (int i = 0; i < 5; i++) {
-    baseline[i]   = sums[i] / 50;
-    // When flex sensors bend, their resistance increases. In a standard voltage divider
-    // with a pull-down resistor, this causes the voltage (and ADC reading) to DROP.
-    // Assuming a ~600 drop for a full bend. You can tune this per finger later.
-    full_bend[i]  = baseline[i] - 600;
+    baseline[i] = flatSums[i] / 50;
   }
+
+  // Quick visual flash to alert user to shift pose
+  tft.fillScreen(ST77XX_BLACK);
+  delay(500);
+
+  // Step 2: TIGHT FIST
+  for (int s = 3; s >= 1; s--) {
+    drawCalibrationScreen("Make a TIGHT FIST", "(curl all fingers)", s);
+    delay(1000);
+  }
+
+  // Take 50 samples and average for full_bend
+  long fistSums[5] = {0, 0, 0, 0, 0};
+  for (int sample = 0; sample < 50; sample++) {
+    for (int i = 0; i < 5; i++) {
+      fistSums[i] += analogRead(FLEX_PINS[i]);
+    }
+    delay(20);
+  }
+  for (int i = 0; i < 5; i++) {
+    full_bend[i] = fistSums[i] / 50;
+    
+    // Guard: if baseline and full_bend are too close (difference < 100 units),
+    // fall back to default baseline - 600 direction to prevent division-by-zero or low sensitivity issues.
+    if (abs(baseline[i] - full_bend[i]) < 100) {
+      full_bend[i] = baseline[i] - 600;
+    }
+  }
+
   calibrated = true;
 
-  Serial.println("\n[CAL] Calibration complete. Baselines:");
+  Serial.println("\n[CAL] Two-Step Calibration complete:");
   for (int i = 0; i < 5; i++) {
-    Serial.printf("  Finger %d: baseline=%d  full_bend=%d\n",
+    Serial.printf("  Finger %d: baseline (flat)=%d  full_bend (fist)=%d\n",
                   i, baseline[i], full_bend[i]);
   }
 
