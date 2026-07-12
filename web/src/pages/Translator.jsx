@@ -10,6 +10,7 @@ export default function Translator() {
   const [confidence, setConfidence] = useState(0);
   const [sentence, setSentence] = useState("");
   const [customTemplates, setCustomTemplates] = useState({});
+  const [autoSpeak, setAutoSpeak] = useState(false);
 
   const [inputSource, setInputSource] = useState(isGloveConnected() ? "glove" : "webcam");
   const [gloveData, setGloveData] = useState({ flex: [0,0,0,0,0], roll: 0, pitch: 0 });
@@ -51,10 +52,11 @@ export default function Translator() {
   const stableDurationCount = useRef(0);
 
   // Speech Synthesis
-  const speakSentence = () => {
-    if (!sentence.trim()) return;
+  const speakSentence = (textToSpeak) => {
+    const text = typeof textToSpeak === 'string' ? textToSpeak : sentence;
+    if (!text.trim()) return;
     const synth = window.speechSynthesis;
-    const utterance = new SpeechSynthesisUtterance(sentence);
+    const utterance = new SpeechSynthesisUtterance(text);
     synth.speak(utterance);
   };
 
@@ -141,7 +143,18 @@ export default function Translator() {
     setSentence((prev) => {
       // Avoid repeating space or duplicate letters consecutively
       if (toAppend === " " && prev.endsWith(" ")) return prev;
-      return prev + toAppend;
+      
+      // Auto-space before new words
+      const newSentence = (prev.length > 0 && !prev.endsWith(" ") && toAppend !== " ") 
+        ? prev + " " + toAppend 
+        : prev + toAppend;
+        
+      if (autoSpeak && toAppend !== " ") {
+        // Speak just the new word
+        speakSentence(toAppend);
+      }
+      
+      return newSentence;
     });
 
     // Provide a subtle haptic or visual indicator
@@ -232,6 +245,14 @@ export default function Translator() {
                 >
                   <Volume2 size={18} />
                   <span>Speak</span>
+                </button>
+                <button 
+                  className={`action-btn ${autoSpeak ? 'action-btn-primary' : ''}`}
+                  onClick={() => setAutoSpeak(!autoSpeak)}
+                  style={autoSpeak ? { backgroundColor: 'var(--primary)', color: 'white' } : {}}
+                >
+                  <Volume2 size={18} />
+                  <span>{autoSpeak ? 'Auto-Speak On' : 'Auto-Speak Off'}</span>
                 </button>
                 <button 
                   className="action-btn"

@@ -184,7 +184,64 @@ export default function Learn() {
   const activeCardIdxRef = useRef(activeCardIdx);
   const isSuccessRef = useRef(isSuccess);
 
-  const currentCards = practiceMode === 'webcam' ? WEBCAM_ISL_GESTURES : GLOVE_ISL_GESTURES;
+
+  const [customWebcamSigns, setCustomWebcamSigns] = useState([]);
+  const [disabledSigns, setDisabledSigns] = useState([]);
+  const [customGloveSigns, setCustomGloveSigns] = useState([]);
+
+  useEffect(() => {
+    const loadDisabled = () => {
+      const savedDisabled = localStorage.getItem('isl_disabled_signs');
+      if (savedDisabled) {
+        setDisabledSigns(JSON.parse(savedDisabled));
+      }
+    };
+    loadDisabled();
+    window.addEventListener('isl_disabled_signs_updated', loadDisabled);
+    return () => window.removeEventListener('isl_disabled_signs_updated', loadDisabled);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const savedWebcam = localStorage.getItem('isl_custom_templates');
+      if (savedWebcam) {
+        const parsed = JSON.parse(savedWebcam);
+        const customW = Object.keys(parsed).map(key => ({
+          id: key,
+          name: key,
+          category: 'Custom Trained',
+          description: 'A custom trained webcam sign.',
+          handPosition: 'Custom position'
+        }));
+        setCustomWebcamSigns(customW);
+      }
+      
+      const savedGlove = localStorage.getItem('isl_custom_glove_templates');
+      if (savedGlove) {
+        const parsedGlove = JSON.parse(savedGlove);
+        const customG = Object.keys(parsedGlove).map(key => ({
+          id: key,
+          name: key,
+          category: 'Custom Trained',
+          description: 'A custom trained glove sign.',
+          flex: parsedGlove[key].flex,
+          flexTolerance: 15,
+          roll: { min: parsedGlove[key].roll - 20, max: parsedGlove[key].roll + 20 },
+          pitch: { min: parsedGlove[key].pitch - 20, max: parsedGlove[key].pitch + 20 }
+        }));
+        setCustomGloveSigns(customG);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const currentCardsRaw = practiceMode === 'webcam' 
+    ? [...WEBCAM_ISL_GESTURES, ...customWebcamSigns] 
+    : [...GLOVE_ISL_GESTURES, ...customGloveSigns];
+  
+  const currentCards = currentCardsRaw.filter(card => !disabledSigns.includes(card.id));
+
   const activeCard = currentCards[activeCardIdx] || currentCards[0];
   const completedList = practiceMode === 'webcam' ? completedWebcam : completedGlove;
 
@@ -242,7 +299,7 @@ export default function Learn() {
       sum += diff * diff;
     }
     const dist = Math.sqrt(sum);
-    const maxAllowedDist = 1.3;
+    const maxAllowedDist = 1.6;
     let score = Math.max(0, 1 - (dist / maxAllowedDist));
     let scorePercentage = Math.round(score * 100);
     if (scorePercentage > 60) {
@@ -337,6 +394,8 @@ export default function Learn() {
         </button>
       </div>
 
+      
+      
       <div className="practice-layout">
         {/* Left: Card Selection list */}
         <div className="card-deck">
@@ -370,7 +429,7 @@ export default function Learn() {
                 
                 return (
                   <div
-                    key={card.id}
+                    key={card.id + idx}
                     onClick={() => {
                       setIsSuccess(false);
                       setMatchScore(0);
@@ -422,87 +481,138 @@ export default function Learn() {
               })}
             </div>
           </div>
+        </div>
 
-          {/* Practice Instructions Card */}
-          <div id="practice-stage-card" className="glass-card practice-card">
-            {isSuccess ? (
-              <div style={{ padding: '2rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem' }}>
-                <div style={{
-                  width: '70px', height: '70px', borderRadius: '50%',
-                  background: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}>
-                  <Award size={40} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#fff' }}>Excellent! Level Passed</h3>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-                    You matched the {activeCard.name} with high accuracy.
-                  </p>
-                </div>
-                <button className="btn btn-primary" onClick={nextCard}>
-                  <span>Next Level</span>
-                  <ArrowRight size={18} />
-                </button>
-              </div>
-            ) : (
-              <>
-                <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.5rem' }}>
-                    {practiceMode === 'webcam' ? '📷 Webcam Mode' : '🧤 Glove Mode'}
-                  </div>
-                  <h3 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{activeCard.name}</h3>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: '0.5rem' }}>
-                    {activeCard.description}
-                  </p>
-                </div>
-
-                {/* Visual reference */}
-                {practiceMode === 'webcam' ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <HandPositionSVG gestureId={activeCard.id} />
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '0.5rem' }}>
-                      <strong>Hand Position:</strong> {activeCard.handPosition}
+        {/* Right: Live Feed & Instruction Card */}
+        <div className="camera-section">
+          {practiceMode === 'webcam' ? (
+            <>
+              <WebcamStream onHandLandmarks={handleHandLandmarks} />
+              
+              <div id="practice-stage-card" className="glass-card practice-card" style={{ marginTop: '1.5rem' }}>
+                {isSuccess ? (
+                  <div style={{ padding: '2rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem' }}>
+                    <div style={{
+                      width: '70px', height: '70px', borderRadius: '50%',
+                      background: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      <Award size={40} />
                     </div>
+                    <div>
+                      <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#fff' }}>Excellent! Level Passed</h3>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
+                        You matched the {activeCard?.name} with high accuracy.
+                      </p>
+                    </div>
+                    <button className="btn btn-primary" onClick={nextCard}>
+                      <span>Next Level</span>
+                      <ArrowRight size={18} />
+                    </button>
                   </div>
                 ) : (
+                  <>
+                    <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.5rem' }}>
+                        📷 Webcam Mode
+                      </div>
+                      <h3 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{activeCard?.name}</h3>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: '0.5rem' }}>
+                        {activeCard?.description}
+                      </p>
+                    </div>
+
+                    <div style={{ marginBottom: '1rem' }}>
+                      <HandPositionSVG gestureId={activeCard?.id} />
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '0.5rem' }}>
+                        <strong>Hand Position:</strong> {activeCard?.handPosition}
+                      </div>
+                    </div>
+
+                    <div style={{ width: '100%', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-glass)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                        <span>Target Precision</span>
+                        <span style={{ fontWeight: 700 }}>82% Required</span>
+                      </div>
+                      <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden' }}>
+                        <div style={{
+                          width: `${matchScore}%`,
+                          height: '100%',
+                          background: getScoreColor(),
+                          borderRadius: '10px',
+                          transition: 'width 0.1s ease, background-color 0.3s ease'
+                        }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0.5rem' }}>
+                        <div className={`match-score-badge ${matchScore >= 82 ? 'success' : ''}`}>
+                          <span>Accuracy Match: {matchScore}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <div id="practice-stage-card" className="glass-card practice-card" style={{ height: '100%' }}>
+              {isSuccess ? (
+                <div style={{ padding: '2rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem' }}>
+                  <div style={{
+                    width: '70px', height: '70px', borderRadius: '50%',
+                    background: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <Award size={40} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#fff' }}>Excellent! Level Passed</h3>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
+                      You matched the {activeCard?.name} with high accuracy.
+                    </p>
+                  </div>
+                  <button className="btn btn-primary" onClick={nextCard}>
+                    <span>Next Level</span>
+                    <ArrowRight size={18} />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.5rem' }}>
+                      🧤 Glove Mode
+                    </div>
+                    <h3 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{activeCard?.name}</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: '0.5rem' }}>
+                      {activeCard?.description}
+                    </p>
+                  </div>
+
                   <div style={{ marginBottom: '1rem' }}>
                     <TargetSensorBars gesture={activeCard} liveData={gloveData} />
                   </div>
-                )}
 
-                <div style={{ width: '100%' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
-                    <span>Target Precision</span>
-                    <span style={{ fontWeight: 700 }}>82% Required</span>
-                  </div>
-                  <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden' }}>
-                    <div style={{
-                      width: `${matchScore}%`,
-                      height: '100%',
-                      background: getScoreColor(),
-                      borderRadius: '10px',
-                      transition: 'width 0.1s ease, background-color 0.3s ease'
-                    }} />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0.5rem' }}>
-                    <div className={`match-score-badge ${matchScore >= 82 ? 'success' : ''}`}>
-                      <span>Accuracy Match: {matchScore}%</span>
+                  <div style={{ width: '100%' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                      <span>Target Precision</span>
+                      <span style={{ fontWeight: 700 }}>82% Required</span>
+                    </div>
+                    <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${matchScore}%`,
+                        height: '100%',
+                        background: getScoreColor(),
+                        borderRadius: '10px',
+                        transition: 'width 0.1s ease, background-color 0.3s ease'
+                      }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0.5rem' }}>
+                      <div className={`match-score-badge ${matchScore >= 82 ? 'success' : ''}`}>
+                        <span>Accuracy Match: {matchScore}%</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Right: Live Feed */}
-        <div className="camera-section">
-          {practiceMode === 'webcam' ? (
-            <WebcamStream onHandLandmarks={handleHandLandmarks} />
-          ) : (
-            <div style={{ height: '480px' }}>
-              <GloveVisualizer flex={gloveData.flex} roll={gloveData.roll} pitch={gloveData.pitch} />
+                </>
+              )}
             </div>
           )}
           
@@ -517,6 +627,7 @@ export default function Learn() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

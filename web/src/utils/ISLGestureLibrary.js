@@ -106,6 +106,126 @@ export const WEBCAM_ISL_GESTURES = [
       0.23, -0.37, 0.17, -0.3, 0.3, -0.2, 0.44, -0.37, 0.52, -0.5,
       0.58, -0.62
     ]
+  },
+  {
+    id: 'I',
+    name: 'I',
+    category: 'Pronoun',
+    untrained: true,
+    description: 'Point index finger to self with palm facing inward. Indicates first person.',
+    handPosition: 'Index finger pointing upward, others bent, palm facing toward your body.',
+    template: [
+      0,0, -0.19, -0.21, -0.32, -0.42, -0.39, -0.58, -0.4, -0.71,
+      -0.12, -0.63, -0.18, -0.83, -0.21, -0.96, -0.22, -1.0, 0.05, -0.63,
+      0.06, -0.83, 0.06, -0.97, 0.05, -1.0, 0.22, -0.58, 0.26, -0.77,
+      0.28, -0.89, 0.28, -0.99, 0.36, -0.48, 0.44, -0.63, 0.48, -0.73,
+      0.5, -0.82
+    ]
+  },
+  {
+    id: 'AFTERNOON',
+    name: 'Afternoon',
+    category: 'Time',
+    untrained: true,
+    description: 'Sign for afternoon.',
+    handPosition: 'Hand positioned forward.',
+    template: [
+      0,0, -0.19, -0.21, -0.32, -0.42, -0.39, -0.58, -0.4, -0.71,
+      -0.12, -0.63, -0.18, -0.83, -0.21, -0.96, -0.22, -1.0, 0.05, -0.63,
+      0.06, -0.83, 0.06, -0.97, 0.05, -1.0, 0.22, -0.58, 0.26, -0.77,
+      0.28, -0.89, 0.28, -0.99, 0.36, -0.48, 0.44, -0.63, 0.48, -0.73,
+      0.5, -0.82
+    ]
+  },
+  {
+    id: 'HOME',
+    name: 'Home',
+    category: 'Place',
+    untrained: true,
+    description: 'Sign for home.',
+    handPosition: 'Fingers touching to form a roof.',
+    template: [
+      0,0, -0.19, -0.21, -0.32, -0.42, -0.39, -0.58, -0.4, -0.71,
+      -0.12, -0.63, -0.18, -0.83, -0.21, -0.96, -0.22, -1.0, 0.05, -0.63,
+      0.06, -0.83, 0.06, -0.97, 0.05, -1.0, 0.22, -0.58, 0.26, -0.77,
+      0.28, -0.89, 0.28, -0.99, 0.36, -0.48, 0.44, -0.63, 0.48, -0.73,
+      0.5, -0.82
+    ]
+  },
+  {
+    id: 'HOW ARE YOU',
+    name: 'How are you',
+    category: 'Greeting',
+    untrained: true,
+    description: 'Ask about someone\'s wellbeing.',
+    handPosition: 'Hands moving forward.',
+    template: [
+      0,0, -0.19, -0.21, -0.32, -0.42, -0.39, -0.58, -0.4, -0.71,
+      -0.12, -0.63, -0.18, -0.83, -0.21, -0.96, -0.22, -1.0, 0.05, -0.63,
+      0.06, -0.83, 0.06, -0.97, 0.05, -1.0, 0.22, -0.58, 0.26, -0.77,
+      0.28, -0.89, 0.28, -0.99, 0.36, -0.48, 0.44, -0.63, 0.48, -0.73,
+      0.5, -0.82
+    ]
+  },
+  {
+    id: 'I AM FINE',
+    name: 'I am fine',
+    category: 'Greeting',
+    untrained: true,
+    description: 'Response indicating wellbeing.',
+    handPosition: 'Hand on chest, moving forward.',
+    template: [
+      0,0, -0.19, -0.21, -0.32, -0.42, -0.39, -0.58, -0.4, -0.71,
+      -0.12, -0.63, -0.18, -0.83, -0.21, -0.96, -0.22, -1.0, 0.05, -0.63,
+      0.06, -0.83, 0.06, -0.97, 0.05, -1.0, 0.22, -0.58, 0.26, -0.77,
+      0.28, -0.89, 0.28, -0.99, 0.36, -0.48, 0.44, -0.63, 0.48, -0.73,
+      0.5, -0.82
+    ]
+  },
+  {
+    id: 'LIVE',
+    name: 'Live',
+    category: 'State',
+    untrained: true,
+    description: 'Sign for living or alive.',
+    handPosition: 'Hands moving upward along the body.',
+    template: [
+      0,0, -0.19, -0.21, -0.32, -0.42, -0.39, -0.58, -0.4, -0.71,
+      -0.12, -0.63, -0.18, -0.83, -0.21, -0.96, -0.22, -1.0, 0.05, -0.63,
+      0.06, -0.83, 0.06, -0.97, 0.05, -1.0, 0.22, -0.58, 0.26, -0.77,
+      0.28, -0.89, 0.28, -0.99, 0.36, -0.48, 0.44, -0.63, 0.48, -0.73,
+      0.5, -0.82
+    ]
+  },
+  {
+    id: 'NAME',
+    name: 'Name',
+    category: 'Question',
+    untrained: true,
+    description: 'Used to ask someone\'s name.',
+    handPosition: 'Index and middle fingers extended.',
+    template: [
+      0,0, -0.19, -0.21, -0.32, -0.42, -0.39, -0.58, -0.4, -0.71,
+      -0.12, -0.63, -0.18, -0.83, -0.21, -0.96, -0.22, -1.0, 0.05, -0.63,
+      0.06, -0.83, 0.06, -0.97, 0.05, -1.0, 0.22, -0.58, 0.26, -0.77,
+      0.28, -0.89, 0.28, -0.99, 0.36, -0.48, 0.44, -0.63, 0.48, -0.73,
+      0.5, -0.82
+    ]
+  },
+  {
+    id: 'TIME',
+    name: 'Time',
+    category: 'Time',
+    untrained: true,
+    description: 'Sign for time, like pointing to a watch.',
+    handPosition: 'Index finger tapping the wrist.',
+    template: [
+      0,0, -0.19, -0.21, -0.32, -0.42, -0.39, -0.58, -0.4, -0.71,
+      -0.12, -0.63, -0.18, -0.83, -0.21, -0.96, -0.22, -1.0, 0.05, -0.63,
+      0.06, -0.83, 0.06, -0.97, 0.05, -1.0, 0.22, -0.58, 0.26, -0.77,
+      0.28, -0.89, 0.28, -0.99, 0.36, -0.48, 0.44, -0.63, 0.48, -0.73,
+      0.5, -0.82
+    ]
   }
 ];
 
@@ -151,6 +271,7 @@ export const GLOVE_ISL_GESTURES = [
     id: 'I',
     name: 'I (Self)',
     category: 'Pronoun',
+    untrained: true,
     description: 'Point index finger to self with palm facing inward. Indicates first person.',
     handPosition: 'Index finger pointing upward, others bent, palm facing toward your body.',
     flex: { thumb: 100, index: 0, middle: 100, ring: 100, little: 100 },
@@ -173,6 +294,7 @@ export const GLOVE_ISL_GESTURES = [
     id: 'NAME',
     name: 'Name',
     category: 'Question',
+    untrained: true,
     description: 'Two fingers (index and middle) tapping. Used to ask someone\'s name.',
     handPosition: 'Index and middle fingers extended, thumb/ring/little curled. Tapping motion.',
     flex: { thumb: 100, index: 0, middle: 0, ring: 100, little: 100 },

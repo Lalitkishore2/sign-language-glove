@@ -4,9 +4,75 @@ import { WEBCAM_ISL_GESTURES, GLOVE_ISL_GESTURES } from '../utils/ISLGestureLibr
 
 export default function Gallery({ setCurrentPage }) {
   const [galleryMode, setGalleryMode] = useState('webcam'); // 'webcam' or 'glove'
-  const currentItems = galleryMode === 'webcam' ? WEBCAM_ISL_GESTURES : GLOVE_ISL_GESTURES;
+  const [grayOutUntrained, setGrayOutUntrained] = useState(false);
+  const [disabledSigns, setDisabledSigns] = useState([]);
+
+  const [customWebcamSigns, setCustomWebcamSigns] = useState([]);
+  const [customGloveSigns, setCustomGloveSigns] = useState([]);
+
+  React.useEffect(() => {
+    try {
+      const savedDisabled = localStorage.getItem('isl_disabled_signs');
+      if (savedDisabled) {
+        setDisabledSigns(JSON.parse(savedDisabled));
+      }
+      const savedWebcam = localStorage.getItem('isl_custom_templates');
+      if (savedWebcam) {
+        const parsed = JSON.parse(savedWebcam);
+        const customW = Object.keys(parsed).map(key => ({
+          id: key,
+          name: key,
+          category: 'Custom Trained',
+          description: 'A custom trained webcam sign.',
+          handPosition: 'Custom position'
+        }));
+        setCustomWebcamSigns(customW);
+      }
+      
+      const savedGlove = localStorage.getItem('isl_custom_glove_templates');
+      if (savedGlove) {
+        const parsedGlove = JSON.parse(savedGlove);
+        const customG = Object.keys(parsedGlove).map(key => ({
+          id: key,
+          name: key,
+          category: 'Custom Trained',
+          description: 'A custom trained glove sign.',
+          flex: parsedGlove[key].flex,
+          flexTolerance: 15,
+          roll: { min: parsedGlove[key].roll - 20, max: parsedGlove[key].roll + 20 },
+          pitch: { min: parsedGlove[key].pitch - 20, max: parsedGlove[key].pitch + 20 }
+        }));
+        setCustomGloveSigns(customG);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const currentItems = galleryMode === 'webcam' 
+    ? [
+        ...WEBCAM_ISL_GESTURES.filter(b => !customWebcamSigns.some(c => c.id === b.id)),
+        ...customWebcamSigns
+      ] 
+    : [
+        ...GLOVE_ISL_GESTURES.filter(b => !customGloveSigns.some(c => c.id === b.id)),
+        ...customGloveSigns
+      ];
+
   const [selectedIdx, setSelectedIdx] = useState(0);
   const selectedItem = currentItems[selectedIdx] || currentItems[0];
+
+  const toggleDisableSign = (id) => {
+    setDisabledSigns(prev => {
+      const newDisabled = prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id];
+      localStorage.setItem('isl_disabled_signs', JSON.stringify(newDisabled));
+      
+      // We also need to dispatch a custom event so other components know
+      window.dispatchEvent(new Event('isl_disabled_signs_updated'));
+      
+      return newDisabled;
+    });
+  };
 
   const switchMode = (mode) => {
     setGalleryMode(mode);
@@ -23,7 +89,8 @@ export default function Gallery({ setCurrentPage }) {
         Browse the dictionary of ISL signs. Switch between Webcam and Glove modes to see gesture details for each input method.
       </p>
 
-      {/* Mode Toggle */}
+      {/* Mode Toggle & Options */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', maxWidth: '400px' }}>
         <button 
           className={`btn ${galleryMode === 'webcam' ? 'btn-primary' : 'btn-secondary'}`}
@@ -41,6 +108,20 @@ export default function Gallery({ setCurrentPage }) {
           <Radio size={18} />
           <span>Glove Signs</span>
         </button>
+        </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+          <input 
+            type="checkbox" 
+            id="grayOut" 
+            checked={grayOutUntrained}
+            onChange={(e) => setGrayOutUntrained(e.target.checked)}
+            style={{ cursor: 'pointer' }}
+          />
+          <label htmlFor="grayOut" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            Gray out untrained signs
+          </label>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '2.5rem', alignItems: 'start' }}>
@@ -49,6 +130,8 @@ export default function Gallery({ setCurrentPage }) {
           <div className="gallery-grid">
             {currentItems.map((item, idx) => {
               const isSelected = selectedIdx === idx;
+              const isUntrained = item.untrained && grayOutUntrained;
+              const isDisabled = disabledSigns.includes(item.id);
               return (
                 <div
                   key={item.id}
@@ -57,6 +140,8 @@ export default function Gallery({ setCurrentPage }) {
                   style={{
                     border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-glass)',
                     background: isSelected ? 'rgba(139, 92, 246, 0.1)' : 'var(--bg-card)',
+                    opacity: (isUntrained || isDisabled) ? 0.4 : 1,
+                    filter: (isUntrained || isDisabled) ? 'grayscale(100%)' : 'none',
                     transform: isSelected ? 'translateY(-2px)' : 'none',
                     boxShadow: isSelected ? '0 10px 20px rgba(139, 92, 246, 0.2)' : 'none'
                   }}
@@ -64,7 +149,11 @@ export default function Gallery({ setCurrentPage }) {
                   <div className="gallery-card-letter text-glow" style={{ fontSize: item.id.length > 3 ? '1.2rem' : '1.8rem' }}>
                     {item.id}
                   </div>
-                  <div className="gallery-card-label">{item.name}</div>
+                  <div className="gallery-card-label">
+                    {item.name}
+                    {isUntrained && !isDisabled && <span style={{ fontSize: '0.5rem', color: 'var(--warning)', marginLeft: '0.5rem' }}>UNTRAINED</span>}
+                    {isDisabled && <span style={{ fontSize: '0.5rem', color: 'var(--danger)', marginLeft: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', padding: '0.1rem 0.3rem', borderRadius: '4px' }}>DISABLED</span>}
+                  </div>
                   <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{item.category}</div>
                 </div>
               );
@@ -182,14 +271,24 @@ export default function Gallery({ setCurrentPage }) {
               </p>
             </div>
 
-            <button 
-              className="btn btn-primary"
+            
+            <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
+              <button 
+                className={`btn ${disabledSigns.includes(selectedItem.id) ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => toggleDisableSign(selectedItem.id)}
+                style={{ flex: 1, justifyContent: 'center' }}
+              >
+                <span>{disabledSigns.includes(selectedItem.id) ? 'Enable Sign' : 'Disable Sign'}</span>
+              </button>
+              <button 
+                className="btn btn-primary"
               onClick={() => setCurrentPage('learn')}
-              style={{ width: '100%', justifyContent: 'center' }}
+              style={{ flex: 1, justifyContent: 'center' }}
             >
               <span>Practice this Gesture</span>
               <ArrowRight size={18} />
             </button>
+            </div>
           </div>
         </div>
       </div>

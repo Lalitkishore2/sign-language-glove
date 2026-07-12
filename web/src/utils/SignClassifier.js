@@ -6,6 +6,20 @@ import { getWebcamTemplatesMap } from './ISLGestureLibrary';
 // Now loaded from the central ISL Gesture Library
 export const DEFAULT_TEMPLATES = getWebcamTemplatesMap();
 
+let disabledSignsCache = [];
+try {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('isl_disabled_signs');
+    if (saved) disabledSignsCache = JSON.parse(saved);
+    
+    window.addEventListener('isl_disabled_signs_updated', () => {
+      const updated = localStorage.getItem('isl_disabled_signs');
+      if (updated) disabledSignsCache = JSON.parse(updated);
+    });
+  }
+} catch (e) {}
+
+
 /**
  * Normalizes 21 3D/2D hand landmarks (legacy single hand).
  */
@@ -283,6 +297,7 @@ export function classifyGesture(normalizedFeatures, customTemplates = {}) {
   let bestLabel = "Unknown";
   
   Object.entries(templates).forEach(([label, templateData]) => {
+    if (disabledSignsCache.includes(label)) return;
     let templateCoords = templateData;
     let isDynamic = false;
     
@@ -302,10 +317,10 @@ export function classifyGesture(normalizedFeatures, customTemplates = {}) {
     }
   });
 
-  const threshold = 1.8; // Tolerance threshold
+  const threshold = 2.2; // Tolerance threshold
   let confidence = Math.max(0, 1 - (minDistance / threshold));
   
-  if (minDistance > 0.9) {
+  if (minDistance > 1.2) {
     confidence = confidence * 0.45; // Drop confidence steeply for far matches
   }
   
