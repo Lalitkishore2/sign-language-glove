@@ -35,8 +35,8 @@
 /* =========================================================================
    WIFI & WEBSOCKETS CONFIGURATION
    ========================================================================= */
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = "POCO";
+const char* password = "lalitkishore27";
 
 WebSocketsServer webSocket = WebSocketsServer(81);
 

@@ -1,18 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, Trash2, Space as SpaceIcon, Plus, Info, RefreshCw } from 'lucide-react';
+import { Volume2, Trash2, Space as SpaceIcon, Info } from 'lucide-react';
 import WebcamStream from '../components/WebcamStream';
 import GloveVisualizer from '../components/GloveVisualizer';
 import { isGloveConnected, onGloveData } from '../utils/GloveConnection';
-import { classifyGesture, loadCustomTemplates, saveCustomTemplate, clearCustomTemplates } from '../utils/SignClassifier';
+import { classifyGesture, loadCustomTemplates } from '../utils/SignClassifier';
 
 export default function Translator() {
   const [prediction, setPrediction] = useState("No Hand Detected");
   const [confidence, setConfidence] = useState(0);
   const [sentence, setSentence] = useState("");
   const [customTemplates, setCustomTemplates] = useState({});
-  const [isCalibrating, setIsCalibrating] = useState(false);
-  const [newTemplateName, setNewTemplateName] = useState("");
-  const [currentNormalizedFeatures, setCurrentNormalizedFeatures] = useState(null);
 
   const [inputSource, setInputSource] = useState(isGloveConnected() ? "glove" : "webcam");
   const [gloveData, setGloveData] = useState({ flex: [0,0,0,0,0], roll: 0, pitch: 0 });
@@ -72,8 +69,6 @@ export default function Translator() {
 
   const handleHandLandmarks = (rawLandmarks, normalizedFeatures) => {
     if (inputSource !== 'webcam') return;
-    
-    setCurrentNormalizedFeatures(normalizedFeatures);
     
     if (!normalizedFeatures) {
       setPrediction("No Hand Detected");
@@ -157,34 +152,6 @@ export default function Translator() {
     }
   };
 
-  const handleSaveTemplate = () => {
-    if (!newTemplateName.trim()) {
-      alert("Please enter a name for the gesture.");
-      return;
-    }
-    if (!currentNormalizedFeatures) {
-      alert("No hand is currently visible. Hold your hand in front of the camera.");
-      return;
-    }
-
-    const success = saveCustomTemplate(newTemplateName.trim(), currentNormalizedFeatures);
-    if (success) {
-      alert(`Successfully saved custom sign: "${newTemplateName}"!`);
-      setNewTemplateName("");
-      setIsCalibrating(false);
-      refreshTemplates();
-    } else {
-      alert("Failed to save template.");
-    }
-  };
-
-  const handleClearCustom = () => {
-    if (window.confirm("Are you sure you want to clear all custom recorded gestures?")) {
-      clearCustomTemplates();
-      refreshTemplates();
-    }
-  };
-
   return (
     <div className="page-container">
       <h2 className="gradient-title">Real-Time Sign Translator</h2>
@@ -223,58 +190,6 @@ export default function Translator() {
           ) : (
             <div style={{ height: '480px' }}>
               <GloveVisualizer flex={gloveData.flex} roll={gloveData.roll} pitch={gloveData.pitch} />
-            </div>
-          )}
-          
-          <div className="action-bar" style={{ marginTop: '1rem' }}>
-            <button 
-              className="action-btn"
-              onClick={() => setIsCalibrating(!isCalibrating)}
-            >
-              <Plus size={18} />
-              <span>Record Custom Gesture</span>
-            </button>
-            {Object.keys(customTemplates).length > 0 && (
-              <button 
-                className="action-btn" 
-                onClick={handleClearCustom}
-                style={{ color: 'var(--error)' }}
-              >
-                <Trash2 size={18} />
-                <span>Reset Custom Signs</span>
-              </button>
-            )}
-          </div>
-
-          {/* Record Drawer */}
-          {isCalibrating && (
-            <div className="glass-card" style={{ marginTop: '1.5rem', padding: '1.5rem', border: '1px solid var(--primary-glow)' }}>
-              <h3 style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Plus size={20} className="text-glow" />
-                <span>Record New Sign</span>
-              </h3>
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                Type a name, hold your hand in the camera frame, and click save. The system will record the current joint angles.
-              </p>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <input
-                  type="text"
-                  placeholder="e.g. Letter E, Hello, Yes"
-                  value={newTemplateName}
-                  onChange={(e) => setNewTemplateName(e.target.value)}
-                  style={{
-                    flex: 1,
-                    background: 'rgba(0,0,0,0.3)',
-                    border: '1px solid var(--border-glass)',
-                    borderRadius: '8px',
-                    padding: '0.6rem 1rem',
-                    color: '#fff'
-                  }}
-                />
-                <button className="btn btn-primary" onClick={handleSaveTemplate} style={{ padding: '0.6rem 1.5rem' }}>
-                  Capture Sign
-                </button>
-              </div>
             </div>
           )}
         </div>

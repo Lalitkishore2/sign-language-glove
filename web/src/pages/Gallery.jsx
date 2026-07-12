@@ -1,38 +1,58 @@
 import React, { useState } from 'react';
-import { BookOpen, HelpCircle, ArrowRight } from 'lucide-react';
-import { DEFAULT_TEMPLATES } from '../utils/SignClassifier';
-
-const GALLERY_ITEMS = [
-  { id: 'A', label: 'Letter A', category: 'Alphabet', desc: 'Fist with thumb upright along the outer side of the index finger.' },
-  { id: 'B', label: 'Letter B', category: 'Alphabet', desc: 'Flat open hand with fingers together, thumb crossed across the palm.' },
-  { id: 'C', label: 'Letter C', category: 'Alphabet', desc: 'All fingers and thumb curved to form a cup or C shape.' },
-  { id: 'Open Hand', label: 'Space Sign', category: 'Control Sign', desc: 'All fingers spread wide. Used in the translator to insert a space.' },
-  { id: 'Closed Fist', label: 'Pause Sign', category: 'Control Sign', desc: 'A tight fist with all fingers bent. Used in the translator to pause appending.' },
-  { id: 'Pointing', label: 'Number 1', category: 'Number', desc: 'Index finger pointing straight up, thumb resting on bent middle finger.' },
-  { id: 'Victory (V)', label: 'Number 2 / V', category: 'Number', desc: 'Index and middle fingers extended in a V, thumb holding other fingers down.' },
-  { id: 'Y', label: 'Letter Y', category: 'Alphabet', desc: 'Thumb and pinky extended wide, middle three fingers curled in.' }
-];
+import { BookOpen, HelpCircle, ArrowRight, Camera, Radio } from 'lucide-react';
+import { WEBCAM_ISL_GESTURES, GLOVE_ISL_GESTURES } from '../utils/ISLGestureLibrary';
 
 export default function Gallery({ setCurrentPage }) {
-  const [selectedItem, setSelectedItem] = useState(GALLERY_ITEMS[0]);
+  const [galleryMode, setGalleryMode] = useState('webcam'); // 'webcam' or 'glove'
+  const currentItems = galleryMode === 'webcam' ? WEBCAM_ISL_GESTURES : GLOVE_ISL_GESTURES;
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const selectedItem = currentItems[selectedIdx] || currentItems[0];
+
+  const switchMode = (mode) => {
+    setGalleryMode(mode);
+    setSelectedIdx(0);
+  };
+
+  const fingers = ['thumb', 'index', 'middle', 'ring', 'little'];
+  const fingerLabels = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'];
 
   return (
     <div className="page-container">
       <h2 className="gradient-title">ISL Gesture Library</h2>
       <p className="page-subtitle">
-        Browse the dictionary of pre-trained signs. Select a card to view detailed outline diagrams and explanation steps.
+        Browse the dictionary of ISL signs. Switch between Webcam and Glove modes to see gesture details for each input method.
       </p>
+
+      {/* Mode Toggle */}
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', maxWidth: '400px' }}>
+        <button 
+          className={`btn ${galleryMode === 'webcam' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => switchMode('webcam')}
+          style={{ flex: 1 }}
+        >
+          <Camera size={18} />
+          <span>Webcam Signs</span>
+        </button>
+        <button 
+          className={`btn ${galleryMode === 'glove' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => switchMode('glove')}
+          style={{ flex: 1 }}
+        >
+          <Radio size={18} />
+          <span>Glove Signs</span>
+        </button>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '2.5rem', alignItems: 'start' }}>
         {/* Left: Gesture Cards Grid */}
         <div>
           <div className="gallery-grid">
-            {GALLERY_ITEMS.map((item) => {
-              const isSelected = selectedItem.id === item.id;
+            {currentItems.map((item, idx) => {
+              const isSelected = selectedIdx === idx;
               return (
                 <div
                   key={item.id}
-                  onClick={() => setSelectedItem(item)}
+                  onClick={() => setSelectedIdx(idx)}
                   className="glass-card gallery-card"
                   style={{
                     border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-glass)',
@@ -41,121 +61,130 @@ export default function Gallery({ setCurrentPage }) {
                     boxShadow: isSelected ? '0 10px 20px rgba(139, 92, 246, 0.2)' : 'none'
                   }}
                 >
-                  <div className="gallery-card-letter text-glow" style={{ fontSize: item.id.length > 2 ? '1.5rem' : '2.5rem' }}>
-                    {item.id.length > 2 ? item.id.split(' ')[0] : item.id}
+                  <div className="gallery-card-letter text-glow" style={{ fontSize: item.id.length > 3 ? '1.2rem' : '1.8rem' }}>
+                    {item.id}
                   </div>
-                  <div className="gallery-card-label">{item.label}</div>
+                  <div className="gallery-card-label">{item.name}</div>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{item.category}</div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Right: Detailed Outline Inspector */}
+        {/* Right: Detailed Inspector */}
         <div>
           <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', border: '1px solid var(--border-glass-focus)' }}>
             <div>
               <span className="prediction-label" style={{ color: 'var(--secondary)' }}>{selectedItem.category}</span>
-              <h3 style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.25rem' }}>{selectedItem.label}</h3>
+              <h3 style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.25rem' }}>{selectedItem.name}</h3>
             </div>
 
-            {/* Gesture Visual Blueprint Mockup */}
+            {/* Visual Reference */}
             <div style={{
               background: 'rgba(0, 0, 0, 0.3)',
               borderRadius: '16px',
-              aspectRatio: '4/3',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              padding: '1.5rem',
+              border: '1px solid var(--border-glass)',
               position: 'relative',
-              overflow: 'hidden',
-              border: '1px solid var(--border-glass)'
+              overflow: 'hidden'
             }}>
-              {/* Radial gradient background */}
               <div style={{
                 position: 'absolute',
-                width: '150px',
-                height: '150px',
+                width: '150px', height: '150px',
                 background: 'radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, transparent 70%)',
-                filter: 'blur(10px)'
+                filter: 'blur(10px)',
+                top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)'
               }} />
 
-              {/* Glowing SVG vector illustration of selected hand blueprint */}
-              <svg 
-                width="140" 
-                height="140" 
-                viewBox="0 0 100 100" 
-                fill="none" 
-                stroke="var(--secondary)" 
-                strokeWidth="2"
-                style={{ filter: 'drop-shadow(0 0 8px rgba(6, 182, 212, 0.5))' }}
-              >
-                {selectedItem.id === 'A' && (
-                  <>
-                    <path d="M 50 90 Q 42 70 42 50 T 42 45" />
-                    <path d="M 50 90 Q 50 70 50 50 T 50 45" />
-                    <path d="M 50 90 Q 58 70 58 50 T 58 45" />
-                    <path d="M 50 90 Q 66 75 66 55 T 66 50" />
-                    {/* Thumb extended to side */}
-                    <path d="M 50 90 Q 28 85 24 75 T 22 62" stroke="var(--primary)" />
-                  </>
-                )}
+              {galleryMode === 'webcam' ? (
+                /* SVG Hand wireframe for webcam */
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                  <svg width="120" height="120" viewBox="0 0 100 100" fill="none" strokeWidth="2"
+                    style={{ filter: 'drop-shadow(0 0 8px rgba(6, 182, 212, 0.5))' }}
+                  >
+                    <circle cx="50" cy="90" r="2" fill="var(--secondary)" />
+                    <path d="M 50 90 Q 25 80 20 70 T 15 55" stroke="var(--primary)" />
+                    <path d="M 50 90 Q 38 60 38 45 T 38 20" stroke="var(--secondary)" />
+                    <path d="M 50 90 Q 50 55 50 40 T 50 15" stroke="var(--primary)" />
+                    <path d="M 50 90 Q 62 60 62 45 T 62 20" stroke="var(--secondary)" />
+                    <path d="M 50 90 Q 75 80 78 70 T 82 55" stroke="var(--primary)" />
+                  </svg>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                    <strong>Hand Position:</strong> {selectedItem.handPosition}
+                  </div>
+                </div>
+              ) : (
+                /* Sensor target bars for glove */
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '1rem', textAlign: 'center' }}>
+                    Target Flex Sensor Values
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-around', gap: '0.75rem' }}>
+                    {fingers.map((finger, idx) => {
+                      const target = selectedItem.flex[finger];
+                      return (
+                        <div key={finger} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', flex: 1 }}>
+                          <div style={{ 
+                            width: '100%', height: '80px', 
+                            background: 'rgba(255,255,255,0.03)', 
+                            borderRadius: '8px',
+                            position: 'relative',
+                            overflow: 'hidden',
+                            border: '1px solid var(--border-glass)'
+                          }}>
+                            <div style={{
+                              position: 'absolute',
+                              bottom: 0, left: 0, right: 0,
+                              height: `${target}%`,
+                              background: target > 50 ? 'var(--primary)' : 'var(--secondary)',
+                              transition: 'height 0.3s ease',
+                              opacity: 0.7
+                            }} />
+                          </div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{fingerLabels[idx]}</span>
+                          <span style={{ fontSize: '0.65rem', color: target === 0 ? 'var(--success)' : 'var(--primary)' }}>
+                            {target === 0 ? 'Open' : target === 100 ? 'Bent' : `${target}%`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Roll / Pitch */}
+                  <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1rem', justifyContent: 'center' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Roll Range</div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 700 }}>
+                        {selectedItem.roll.min}° — {selectedItem.roll.max}°
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pitch Range</div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--secondary)', fontWeight: 700 }}>
+                        {selectedItem.pitch.min}° — {selectedItem.pitch.max}°
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                {selectedItem.id === 'B' && (
-                  <>
-                    <path d="M 50 90 Q 42 60 42 40 T 42 20" />
-                    <path d="M 50 90 Q 50 60 50 38 T 50 18" />
-                    <path d="M 50 90 Q 58 60 58 40 T 58 20" />
-                    <path d="M 50 90 Q 66 65 66 45 T 66 25" />
-                    {/* Thumb crossed over palm */}
-                    <path d="M 50 90 Q 38 85 45 75 T 48 65" stroke="var(--primary)" />
-                  </>
-                )}
-
-                {selectedItem.id === 'C' && (
-                  <>
-                    {/* Curved fingers */}
-                    <path d="M 68 85 C 38 85 30 70 30 50 C 30 30 38 15 68 15" />
-                    {/* Thumb curved below */}
-                    <path d="M 68 85 C 45 85 42 80 40 70" stroke="var(--primary)" />
-                  </>
-                )}
-
-                {(selectedItem.id === 'Open Hand' || selectedItem.id === 'Closed Fist' || selectedItem.id === 'Pointing' || selectedItem.id === 'Victory (V)' || selectedItem.id === 'Y') && (
-                  <>
-                    {/* Generic Blueprint Circle */}
-                    <circle cx="50" cy="50" r="30" stroke="rgba(255,255,255,0.05)" strokeDasharray="3" />
-                    <path d="M 50 90 Q 30 65 30 45 T 30 20" stroke={selectedItem.id === 'Open Hand' ? 'var(--secondary)' : 'rgba(255,255,255,0.1)'} />
-                    <path d="M 50 90 Q 43 60 43 40 T 43 15" stroke={['Open Hand', 'Pointing', 'Victory (V)'].includes(selectedItem.id) ? 'var(--primary)' : 'rgba(255,255,255,0.1)'} />
-                    <path d="M 50 90 Q 50 58 50 38 T 50 13" stroke={['Open Hand', 'Victory (V)'].includes(selectedItem.id) ? 'var(--secondary)' : 'rgba(255,255,255,0.1)'} />
-                    <path d="M 50 90 Q 58 60 58 40 T 58 18" stroke={selectedItem.id === 'Open Hand' ? 'var(--primary)' : 'rgba(255,255,255,0.1)'} />
-                    <path d="M 50 90 Q 70 70 72 52 T 74 30" stroke={['Open Hand', 'Y'].includes(selectedItem.id) ? 'var(--secondary)' : 'rgba(255,255,255,0.1)'} />
-                    <path d="M 50 90 Q 25 80 20 70 T 15 58" stroke={['Open Hand', 'Y'].includes(selectedItem.id) ? 'var(--primary)' : 'rgba(255,255,255,0.1)'} />
-                  </>
-                )}
-              </svg>
               <div style={{ position: 'absolute', bottom: '0.75rem', left: '0.75rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                Joint Angulation Blueprint
+                {galleryMode === 'webcam' ? 'Hand Landmark Reference' : 'Sensor Target Reference'}
               </div>
             </div>
 
             <div>
               <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.35rem', color: 'var(--text-primary)' }}>Gesture Description</h4>
               <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                {selectedItem.desc}
+                {selectedItem.description}
               </p>
             </div>
 
             <button 
               className="btn btn-primary"
-              onClick={() => {
-                // If it's a practice letter, redirect to Learn, else redirect to Translator
-                if (['A', 'B', 'C', 'L', 'V', 'Y'].includes(selectedItem.id.charAt(0))) {
-                  setCurrentPage('learn');
-                } else {
-                  setCurrentPage('translator');
-                }
-              }}
+              onClick={() => setCurrentPage('learn')}
               style={{ width: '100%', justifyContent: 'center' }}
             >
               <span>Practice this Gesture</span>

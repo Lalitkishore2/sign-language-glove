@@ -5,6 +5,8 @@ import {
   Check, FileUp, FileDown, RotateCcw, AlertTriangle
 } from 'lucide-react';
 import WebcamStream from '../components/WebcamStream';
+import GloveVisualizer from '../components/GloveVisualizer';
+import { isGloveConnected, onGloveData } from '../utils/GloveConnection';
 import { 
   classifyGesture, 
   classifySequence, 
@@ -19,6 +21,12 @@ export default function Trainer() {
   const [gestureName, setGestureName] = useState("");
   const [gestureType, setGestureType] = useState("static"); // "static" or "dynamic"
   
+  // Input source
+  const [inputSource, setInputSource] = useState(isGloveConnected() ? "glove" : "webcam");
+  const [gloveData, setGloveData] = useState({ flex: [0,0,0,0,0], roll: 0, pitch: 0, gesture: '', confidence: 0 });
+  const gloveDataRef = useRef(gloveData);
+  const inputSourceRef = useRef(inputSource);
+
   // Recording states
   const [isRecording, setIsRecording] = useState(false);
   const [countdown, setCountdown] = useState(0);
@@ -36,8 +44,37 @@ export default function Trainer() {
   const webcamBufferRef = useRef([]);
   const recordingBufferRef = useRef([]);
   const currentNormalizedRef = useRef(null);
+  const countdownRef = useRef(0);
+  const isRecordingRef = useRef(false);
   
   const timerRef = useRef(null);
+
+  // Sync refs
+  useEffect(() => { inputSourceRef.current = inputSource; }, [inputSource]);
+  useEffect(() => { gloveDataRef.current = gloveData; }, [gloveData]);
+  useEffect(() => { countdownRef.current = countdown; }, [countdown]);
+  useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
+
+  // Glove data listener
+  useEffect(() => {
+    onGloveData((data) => {
+      if (inputSourceRef.current === 'glove') {
+        setGloveData(data);
+        
+        // Live prediction in sandbox (when not recording)
+        if (!isRecordingRef.current) {
+          if (data.gesture && data.gesture !== "") {
+            setPrediction(data.gesture);
+            setConfidence(data.confidence);
+            setIsDynamicPrediction(false);
+          } else {
+            setPrediction("No Sign Detected");
+            setConfidence(0);
+          }
+        }
+      }
+    });
+  }, []);
 
   // Load custom templates
   const refreshTemplates = () => {
@@ -61,14 +98,14 @@ export default function Trainer() {
 
   // Callback from WebcamStream
   const handleHandLandmarks = (rawLandmarks, normalizedFeatures, handedness) => {
+    if (inputSource !== 'webcam') return;
     currentNormalizedRef.current = normalizedFeatures;
 
     if (!normalizedFeatures) {
-      // If no hands detected, clear the webcam buffer slowly
       if (webcamBufferRef.current.length > 0) {
         webcamBufferRef.current.shift();
       }
-      if (!isRecording) {
+      if (!isRecordingRef.current) {
         setPrediction("No Hand Detected");
         setConfidence(0);
         setIsDynamicPrediction(false);
@@ -76,17 +113,16 @@ export default function Trainer() {
       return;
     }
 
-    // 1. Maintain sliding window of frames for dynamic matching (last 60 frames ~2s)
+    // 1. Maintain sliding window of frames for dynamic matching
     webcamBufferRef.current.push(normalizedFeatures);
     if (webcamBufferRef.current.length > 60) {
       webcamBufferRef.current.shift();
     }
 
     // 2. Accumulate frames if actively recording a dynamic gesture
-    if (isRecording && countdown === 0) {
+    if (isRecordingRef.current && countdownRef.current === 0) {
       recordingBufferRef.current.push(normalizedFeatures);
       
-      // Update progress bar (up to 45 frames)
       const maxFrames = 45;
       const progress = Math.min(100, (recordingBufferRef.current.length / maxFrames) * 100);
       setRecordingProgress(Math.round(progress));
@@ -97,16 +133,14 @@ export default function Trainer() {
       return;
     }
 
-    // 3. Regular prediction sandbox (only runs when not actively recording)
-    if (!isRecording) {
-      // Try matching dynamic gestures first
+    // 3. Regular prediction sandbox
+    if (!isRecordingRef.current) {
       const dynamicResult = classifySequence(webcamBufferRef.current, customTemplates);
       if (dynamicResult.label !== "Unknown" && dynamicResult.confidence > 50) {
         setPrediction(dynamicResult.label);
         setConfidence(dynamicResult.confidence);
         setIsDynamicPrediction(true);
       } else {
-        // Fallback to static gesture match
         const staticResult = classifyGesture(normalizedFeatures, customTemplates);
         setPrediction(staticResult.label);
         setConfidence(staticResult.confidence);
@@ -121,6 +155,31 @@ export default function Trainer() {
       triggerMessage("Please enter a name for your sign first.", "error");
       return;
     }
+
+    if (inputSource === 'glove') {
+      // Save glove sensor data as a custom glove template
+      const gd = gloveDataRef.current;
+      const gloveTemplate = {
+        flex: [...gd.flex],
+        roll: gd.roll,
+        pitch: gd.pitch
+      };
+      
+      try {
+        const saved = localStorage.getItem('isl_custom_glove_templates');
+        const current = saved ? JSON.parse(saved) : {};
+        current[gestureName.trim()] = gloveTemplate;
+        localStorage.setItem('isl_custom_glove_templates', JSON.stringify(current));
+        triggerMessage(`Saved glove sign: "${gestureName}" (Flex: [${gd.flex.join(', ')}], Roll: ${gd.roll.toFixed(1)}°, Pitch: ${gd.pitch.toFixed(1)}°)`);
+        setGestureName("");
+        refreshTemplates();
+      } catch (e) {
+        triggerMessage("Failed to save glove template.", "error");
+      }
+      return;
+    }
+
+    // Webcam mode
     if (!currentNormalizedRef.current) {
       triggerMessage("No hands detected in camera frame. Hold pose and try again.", "error");
       return;
@@ -149,13 +208,11 @@ export default function Trainer() {
       return;
     }
     
-    // Reset buffers
     recordingBufferRef.current = [];
     setRecordingProgress(0);
     setIsRecording(true);
     setCountdown(3);
 
-    // 3 seconds visual countdown
     let count = 3;
     timerRef.current = setInterval(() => {
       count -= 1;
@@ -177,7 +234,6 @@ export default function Trainer() {
       return;
     }
 
-    // Resample sequence to K=10 keyframes
     const resampled = resampleSequence(rawFrames, 10);
     const success = saveCustomTemplate(
       gestureName.trim(),
@@ -216,9 +272,16 @@ export default function Trainer() {
         const custom = JSON.parse(saved);
         delete custom[label];
         localStorage.setItem('isl_custom_templates', JSON.stringify(custom));
-        refreshTemplates();
-        triggerMessage(`Deleted gesture: "${label}"`);
       }
+      // Also try deleting from glove templates
+      const gloveSaved = localStorage.getItem('isl_custom_glove_templates');
+      if (gloveSaved) {
+        const gloveCustom = JSON.parse(gloveSaved);
+        delete gloveCustom[label];
+        localStorage.setItem('isl_custom_glove_templates', JSON.stringify(gloveCustom));
+      }
+      refreshTemplates();
+      triggerMessage(`Deleted gesture: "${label}"`);
     } catch (e) {
       console.error(e);
       triggerMessage("Failed to delete gesture.", "error");
@@ -229,6 +292,7 @@ export default function Trainer() {
   const handleClearAll = () => {
     if (window.confirm("Are you sure you want to clear all custom recorded signs? This cannot be undone.")) {
       clearCustomTemplates();
+      localStorage.removeItem('isl_custom_glove_templates');
       refreshTemplates();
       triggerMessage("Cleared all custom signs.");
     }
@@ -237,12 +301,15 @@ export default function Trainer() {
   // Export templates as JSON file
   const handleExportJSON = () => {
     try {
-      const saved = localStorage.getItem('isl_custom_templates');
-      if (!saved || saved === "{}") {
+      const webcamSaved = localStorage.getItem('isl_custom_templates') || "{}";
+      const gloveSaved = localStorage.getItem('isl_custom_glove_templates') || "{}";
+      const exportData = { webcam: JSON.parse(webcamSaved), glove: JSON.parse(gloveSaved) };
+      
+      if (Object.keys(exportData.webcam).length === 0 && Object.keys(exportData.glove).length === 0) {
         triggerMessage("No custom signs to export.", "error");
         return;
       }
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(saved);
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData));
       const downloadAnchor = document.createElement('a');
       downloadAnchor.setAttribute("href", dataStr);
       downloadAnchor.setAttribute("download", `ishaara_custom_signs_${new Date().toISOString().slice(0,10)}.json`);
@@ -266,12 +333,25 @@ export default function Trainer() {
       try {
         const importedData = JSON.parse(e.target.result);
         
-        // Merge or replace options
-        const saved = localStorage.getItem('isl_custom_templates');
-        const current = saved ? JSON.parse(saved) : {};
-        const merged = { ...current, ...importedData };
+        // Handle both old format (flat) and new format (webcam/glove)
+        if (importedData.webcam || importedData.glove) {
+          if (importedData.webcam) {
+            const saved = localStorage.getItem('isl_custom_templates');
+            const current = saved ? JSON.parse(saved) : {};
+            localStorage.setItem('isl_custom_templates', JSON.stringify({ ...current, ...importedData.webcam }));
+          }
+          if (importedData.glove) {
+            const saved = localStorage.getItem('isl_custom_glove_templates');
+            const current = saved ? JSON.parse(saved) : {};
+            localStorage.setItem('isl_custom_glove_templates', JSON.stringify({ ...current, ...importedData.glove }));
+          }
+        } else {
+          // Old flat format — treat as webcam templates
+          const saved = localStorage.getItem('isl_custom_templates');
+          const current = saved ? JSON.parse(saved) : {};
+          localStorage.setItem('isl_custom_templates', JSON.stringify({ ...current, ...importedData }));
+        }
         
-        localStorage.setItem('isl_custom_templates', JSON.stringify(merged));
         refreshTemplates();
         triggerMessage("Custom signs imported & merged successfully!");
       } catch (err) {
@@ -282,11 +362,28 @@ export default function Trainer() {
     reader.readAsText(file);
   };
 
+  // Get all templates (webcam + glove) for display
+  const getAllTemplates = () => {
+    const webcamTemplates = { ...customTemplates };
+    try {
+      const gloveSaved = localStorage.getItem('isl_custom_glove_templates');
+      if (gloveSaved) {
+        const gloveTemplates = JSON.parse(gloveSaved);
+        Object.entries(gloveTemplates).forEach(([key, val]) => {
+          webcamTemplates[key] = { ...val, type: 'glove' };
+        });
+      }
+    } catch (e) { /* ignore */ }
+    return webcamTemplates;
+  };
+
+  const allTemplates = getAllTemplates();
+
   return (
     <div className="page-container">
       <h2 className="gradient-title">AI Gesture Training Studio</h2>
       <p className="page-subtitle">
-        Teach Ishaara custom signs! Differentiate between static hand shapes and dynamic movements, then test them immediately.
+        Teach Ishaara custom signs! Use the webcam for hand landmark capture or the glove for sensor-based gesture training.
       </p>
 
       {/* Floating System Alerts */}
@@ -348,35 +445,37 @@ export default function Trainer() {
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', fontWeight: 600 }}>
-                  Gesture Type
-                </label>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <button
-                    onClick={() => setGestureType("static")}
-                    disabled={isRecording}
-                    className={`btn ${gestureType === "static" ? "btn-primary" : "btn-secondary"}`}
-                    style={{ flex: 1, padding: '0.75rem' }}
-                  >
-                    <strong>Static Pose</strong>
-                    <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 400, marginTop: '0.1rem', opacity: 0.8 }}>
-                      Single frame hand shape (e.g. letters)
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => setGestureType("dynamic")}
-                    disabled={isRecording}
-                    className={`btn ${gestureType === "dynamic" ? "btn-primary" : "btn-secondary"}`}
-                    style={{ flex: 1, padding: '0.75rem' }}
-                  >
-                    <strong>Dynamic Movement</strong>
-                    <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 400, marginTop: '0.1rem', opacity: 0.8 }}>
-                      Motion over 1.5 seconds (e.g. waving)
-                    </span>
-                  </button>
+              {inputSource === 'webcam' && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', fontWeight: 600 }}>
+                    Gesture Type
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    <button
+                      onClick={() => setGestureType("static")}
+                      disabled={isRecording}
+                      className={`btn ${gestureType === "static" ? "btn-primary" : "btn-secondary"}`}
+                      style={{ flex: 1, padding: '0.75rem' }}
+                    >
+                      <strong>Static Pose</strong>
+                      <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 400, marginTop: '0.1rem', opacity: 0.8 }}>
+                        Single frame hand shape (e.g. letters)
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setGestureType("dynamic")}
+                      disabled={isRecording}
+                      className={`btn ${gestureType === "dynamic" ? "btn-primary" : "btn-secondary"}`}
+                      style={{ flex: 1, padding: '0.75rem' }}
+                    >
+                      <strong>Dynamic Movement</strong>
+                      <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 400, marginTop: '0.1rem', opacity: 0.8 }}>
+                        Motion over 1.5 seconds (e.g. waving)
+                      </span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -411,7 +510,6 @@ export default function Trainer() {
                       🔴 RECORDING MOVEMENT...
                     </h4>
                     
-                    {/* Progress Bar */}
                     <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden', margin: '1.5rem 0 0.5rem 0' }}>
                       <div style={{
                         width: `${recordingProgress}%`,
@@ -438,13 +536,25 @@ export default function Trainer() {
             ) : (
               <div style={{ textAlign: 'center', padding: '1rem' }}>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-                  {gestureType === 'static' 
-                    ? 'Align your hand pose in the camera stream and click "Capture Frame" to save the template.'
-                    : 'Click "Record Sequence" to begin a countdown, followed by a 1.5-second capture of your hand movement.'
+                  {inputSource === 'glove'
+                    ? 'Hold the glove in the desired pose and click "Capture Glove Snapshot" to save the current sensor readings as a template.'
+                    : gestureType === 'static' 
+                      ? 'Align your hand pose in the camera stream and click "Capture Frame" to save the template.'
+                      : 'Click "Record Sequence" to begin a countdown, followed by a 1.5-second capture of your hand movement.'
                   }
                 </p>
 
-                {gestureType === 'static' ? (
+                {inputSource === 'glove' ? (
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={handleCaptureStatic}
+                    disabled={!gestureName.trim()}
+                    style={{ width: '100%', padding: '0.9rem' }}
+                  >
+                    <Save size={18} />
+                    <span>Capture Glove Snapshot</span>
+                  </button>
+                ) : gestureType === 'static' ? (
                   <button 
                     className="btn btn-primary" 
                     onClick={handleCaptureStatic}
@@ -474,10 +584,10 @@ export default function Trainer() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Info size={20} className="text-glow" />
-                <span>Saved Custom Gestures ({Object.keys(customTemplates).length})</span>
+                <span>Saved Custom Gestures ({Object.keys(allTemplates).length})</span>
               </h3>
               
-              {Object.keys(customTemplates).length > 0 && (
+              {Object.keys(allTemplates).length > 0 && (
                 <button 
                   onClick={handleClearAll} 
                   style={{ background: 'transparent', border: 'none', color: 'var(--error)', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
@@ -488,13 +598,13 @@ export default function Trainer() {
               )}
             </div>
 
-            {Object.keys(customTemplates).length === 0 ? (
+            {Object.keys(allTemplates).length === 0 ? (
               <div style={{ padding: '1.5rem', textAlign: 'center', border: '1px dashed var(--border-glass)', borderRadius: '12px' }}>
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No custom signs trained yet. Start by defining one above!</p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '0.25rem' }}>
-                {Object.entries(customTemplates).map(([label, tpl]) => (
+                {Object.entries(allTemplates).map(([label, tpl]) => (
                   <div 
                     key={label}
                     style={{
@@ -514,11 +624,11 @@ export default function Trainer() {
                         marginLeft: '0.5rem',
                         padding: '0.15rem 0.4rem',
                         borderRadius: '10px',
-                        background: tpl.type === 'dynamic' ? 'rgba(6, 182, 212, 0.15)' : 'rgba(139, 92, 246, 0.15)',
-                        color: tpl.type === 'dynamic' ? 'var(--secondary)' : 'var(--primary)',
+                        background: tpl.type === 'glove' ? 'rgba(16, 185, 129, 0.15)' : tpl.type === 'dynamic' ? 'rgba(6, 182, 212, 0.15)' : 'rgba(139, 92, 246, 0.15)',
+                        color: tpl.type === 'glove' ? 'var(--success)' : tpl.type === 'dynamic' ? 'var(--secondary)' : 'var(--primary)',
                         fontWeight: 700
                       }}>
-                        {tpl.type === 'dynamic' ? `Dynamic (${tpl.originalLength}f)` : 'Static'}
+                        {tpl.type === 'glove' ? 'Glove' : tpl.type === 'dynamic' ? `Dynamic (${tpl.originalLength}f)` : 'Static'}
                       </span>
                     </div>
                     <button 
@@ -539,7 +649,7 @@ export default function Trainer() {
               <button 
                 onClick={handleExportJSON}
                 className="btn btn-secondary"
-                disabled={Object.keys(customTemplates).length === 0}
+                disabled={Object.keys(allTemplates).length === 0}
                 style={{ flex: 1, padding: '0.6rem 0', fontSize: '0.8rem', gap: '0.35rem' }}
               >
                 <FileDown size={14} />
@@ -564,12 +674,42 @@ export default function Trainer() {
 
         </div>
 
-        {/* Right column: Camera Stream & Sandbox Testing */}
+        {/* Right column: Camera/Glove Stream & Sandbox Testing */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           
-          {/* Camera Feed */}
+          {/* Input Source Toggle */}
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <button 
+              className={`btn ${inputSource === 'webcam' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setInputSource('webcam')}
+              style={{ flex: 1 }}
+            >
+              Webcam Feed
+            </button>
+            <button 
+              className={`btn ${inputSource === 'glove' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => {
+                if (!isGloveConnected()) {
+                  alert("Please connect the glove from the Home page first.");
+                  return;
+                }
+                setInputSource('glove');
+              }}
+              style={{ flex: 1 }}
+            >
+              Glove Sensor
+            </button>
+          </div>
+
+          {/* Camera/Glove Feed */}
           <div className="camera-card-container">
-            <WebcamStream onHandLandmarks={handleHandLandmarks} />
+            {inputSource === 'webcam' ? (
+              <WebcamStream onHandLandmarks={handleHandLandmarks} />
+            ) : (
+              <div style={{ height: '400px' }}>
+                <GloveVisualizer flex={gloveData.flex} roll={gloveData.roll} pitch={gloveData.pitch} />
+              </div>
+            )}
           </div>
 
           {/* Sandbox Live Tester */}
@@ -591,7 +731,6 @@ export default function Trainer() {
               position: 'relative',
               overflow: 'hidden'
             }}>
-              {/* Glow background effect if matching */}
               {confidence > 0 && (
                 <div style={{
                   position: 'absolute',
@@ -629,18 +768,18 @@ export default function Trainer() {
                     fontSize: '0.65rem',
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
-                    color: isDynamicPrediction ? 'var(--secondary)' : 'var(--primary)',
-                    background: isDynamicPrediction ? 'rgba(6, 182, 212, 0.1)' : 'rgba(139, 92, 246, 0.1)',
+                    color: inputSource === 'glove' ? 'var(--success)' : isDynamicPrediction ? 'var(--secondary)' : 'var(--primary)',
+                    background: inputSource === 'glove' ? 'rgba(16, 185, 129, 0.1)' : isDynamicPrediction ? 'rgba(6, 182, 212, 0.1)' : 'rgba(139, 92, 246, 0.1)',
                     padding: '0.15rem 0.5rem',
                     borderRadius: '4px',
                     fontWeight: 600
                   }}>
-                    {isDynamicPrediction ? 'Dynamic Motion Match' : 'Static Shape Match'}
+                    {inputSource === 'glove' ? 'Glove Sensor Match' : isDynamicPrediction ? 'Dynamic Motion Match' : 'Static Shape Match'}
                   </span>
                 </div>
               ) : (
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  Show a custom pose or repeat a dynamic gesture to test recognition.
+                  {inputSource === 'glove' ? 'Make a gesture with the glove to test recognition.' : 'Show a custom pose or repeat a dynamic gesture to test recognition.'}
                 </div>
               )}
             </div>
@@ -648,7 +787,10 @@ export default function Trainer() {
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', background: 'rgba(255,255,255,0.01)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.02)' }}>
               <HelpCircle size={16} className="text-glow" style={{ marginTop: '0.1rem', flexShrink: 0 }} />
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                <strong>Tip:</strong> Skeletons are color-coded! Left Hand is <span style={{ color: 'var(--secondary)', fontWeight: 700 }}>Cyan</span> and Right Hand is <span style={{ color: '#d946ef', fontWeight: 700 }}>Magenta</span>. Custom gestures are stored locally in your browser cache.
+                <strong>Tip:</strong> {inputSource === 'glove' 
+                  ? 'In Glove mode, capture saves the current flex sensor values, roll, and pitch as a template. The ESP32 handles gesture recognition natively.'
+                  : 'Skeletons are color-coded! Custom gestures are stored locally in your browser cache.'
+                }
               </p>
             </div>
           </div>
