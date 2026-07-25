@@ -1,4 +1,22 @@
+# Build & IDE artifacts
 .pio
+.cache
 .vscode
 .clangd
 compile_commands.json
+
+# Node dependencies & web builds
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.local
+
+# ML Large Model weights (>100MB)
+*.pth
+*.pt
+*.onnx
+*.bin
+*.safetensors
+*.ckpt

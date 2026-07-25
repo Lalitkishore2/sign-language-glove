@@ -1,0 +1,57 @@
+# ============================================================
+# Kinex Configuration
+# ============================================================
+# All runtime values are externalized here.
+# No hardcoded values should exist in the application code.
+# ============================================================
+
+kinex:
+  version: "1.0.0"
+  name: "Kinex ISL Recognition Platform"
+
+recognition:
+  model_dir: "models/isl"
+  default_model: null
+  confidence_threshold: 0.65
+  frame_buffer_size: 16
+  max_frame_buffer_size: 32
+  temporal_smoothing_window: 5
+  duplicate_suppression_cooldown_ms: 500
+  gesture_cooldown_ms: 300
+
+mediapipe:
+  max_num_hands: 2
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  model_asset_path: null
+
+camera:
+  target_fps: 30
+  resolution:
+    width: 640
+    height: 480
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins:
+    - "http://localhost:5173"
+    - "http://localhost:3000"
+  workers: 1
+
+logging:
+  level: "INFO"
+  dir: "logs"
+  recognition_log: "recognition.log"
+  api_log: "api.log"
+  error_log: "error.log"
+
+gemini:
+  model: "gemini-1.5-flash"
+  api_key_env: "GEMINI_API_KEY"
+  timeout_seconds: 5.0
+  max_retries: 3
+
+bluetooth:
+  enabled: false
+  scan_duration_seconds: 10
