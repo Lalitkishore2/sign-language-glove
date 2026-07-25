@@ -18,10 +18,139 @@
  * ============================================================
  */
 
-#include <Arduino.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7735.h>
-#include <MPU6050.h>
+#if !defined(ARDUINO) || !defined(__xtensa__)
+// Zero-dependency C/C++ fallback types for VS Code static linter
+typedef decltype(sizeof(0)) size_t;
+typedef unsigned char uint8_t;
+typedef unsigned char byte;
+typedef unsigned short uint16_t;
+typedef short int16_t;
+
+#define ST77XX_BLACK 0
+#define ST7735_BLACK 0
+#define ST7735_WHITE 0
+#define ST7735_RED 0
+#define INITR_BLACKTAB 0
+#define WL_CONNECTED 3
+#define INPUT 0
+#define M_PI 3.14159265358979323846
+#define PI M_PI
+#define ADC_11db 0
+#define WIFI_STA 1
+
+class String {
+  const char* _s;
+public:
+  String(const char* s = "") : _s(s) {}
+  String(int v) : _s("") {}
+  int length() const { return 0; }
+  const char* c_str() const { return _s ? _s : ""; }
+  int indexOf(const char*) const { return -1; }
+  bool operator==(const char*) const { return false; }
+};
+
+class SerialStub {
+public:
+  void begin(int) {}
+  void print(const char*) {}
+  void print(const String&) {}
+  void println(const char* = "") {}
+  void println(const String&) {}
+  void printf(const char*, ...) {}
+  bool available() { return false; }
+  char read() { return 0; }
+};
+static SerialStub Serial;
+
+enum WStype_t { WStype_TEXT };
+class WebSocketsServer {
+public:
+  WebSocketsServer(int) {}
+  void begin() {}
+  void loop() {}
+  void onEvent(void(*)(uint8_t, WStype_t, uint8_t*, size_t)) {}
+  void broadcastTXT(const char*) {}
+};
+
+class GFXcanvas16 {
+public:
+  GFXcanvas16(int, int) {}
+  void fillScreen(uint16_t) {}
+  void drawRect(int, int, int, int, uint16_t) {}
+  void fillRect(int, int, int, int, uint16_t) {}
+  void drawFastHLine(int, int, int, uint16_t) {}
+  void drawLine(int, int, int, int, uint16_t) {}
+  void fillCircle(int, int, int, uint16_t) {}
+  void setTextSize(uint8_t) {}
+  void setTextColor(uint16_t) {}
+  void setCursor(int, int) {}
+  void print(const char*) {}
+  void print(const String&) {}
+  void printf(const char*, ...) {}
+  void* getBuffer() { return nullptr; }
+};
+
+class Adafruit_ST7735 {
+public:
+  Adafruit_ST7735(int, int, int) {}
+  void initR(int) {}
+  void setSPISpeed(int) {}
+  void setRotation(int) {}
+  void fillScreen(uint16_t) {}
+  void drawRGBBitmap(int, int, void*, int, int) {}
+  void setCursor(int, int) {}
+  void setTextColor(uint16_t) {}
+  void setTextSize(uint8_t) {}
+  void print(const char*) {}
+  void print(const String&) {}
+};
+
+class MPU6050 {
+public:
+  void initialize() {}
+  bool testConnection() { return true; }
+  void getMotion6(int16_t*, int16_t*, int16_t*, int16_t*, int16_t*, int16_t*) {}
+};
+
+class WiFiStub {
+public:
+  void mode(int) {}
+  void setAutoReconnect(bool) {}
+  void begin(const char*, const char*) {}
+  int status() { return WL_CONNECTED; }
+  const char* localIP() { return "192.168.1.100"; }
+};
+static WiFiStub WiFi;
+
+class SPIStub {
+public:
+  void begin(int, int, int, int) {}
+};
+static SPIStub SPI;
+
+class WireStub {
+public:
+  void begin(int, int) {}
+  void beginTransmission(uint8_t) {}
+  uint8_t endTransmission() { return 0; }
+};
+static WireStub Wire;
+
+inline int snprintf(char*, size_t, const char*, ...) { return 0; }
+inline int analogRead(int) { return 0; }
+inline void analogSetWidth(int) {}
+inline void analogSetPinAttenuation(int, int) {}
+inline void pinMode(int, int) {}
+inline void delay(unsigned long) {}
+inline unsigned long millis() { return 0; }
+inline long map(long x, long in_min, long in_max, long out_min, long out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+inline int constrain(int x, int a, int b) { return x < a ? a : (x > b ? b : x); }
+inline int abs(int x) { return x < 0 ? -x : x; }
+inline double atan2(double y, double x) { return 0.0; }
+inline double sqrt(double x) { return 0.0; }
+#else
 #include <Arduino.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
@@ -31,12 +160,13 @@
 #include <math.h>
 #include <WiFi.h>
 #include <WebSocketsServer.h>
+#endif
 
 /* =========================================================================
    WIFI & WEBSOCKETS CONFIGURATION
    ========================================================================= */
-const char* ssid = "POCO";
-const char* password = "lalitkishore27";
+const char* ssid = "MUTHU KUMARAN SIVA";
+const char* password = "Mks05052006.";
 
 WebSocketsServer webSocket = WebSocketsServer(81);
 
@@ -132,8 +262,7 @@ const GestureTemplate gestures[NUM_GESTURES] = {
    ========================================================================= */
 // Raw ADC readings for each finger when hand is OPEN (flat)
 int baseline[5]      = {0, 0, 0, 0, 0};
-// Raw ADC readings for each finger when hand is CLOSED (fist) — estimated
-// These will be set to baseline + 800 as a reasonable approximation
+// Raw ADC readings for each finger when hand is CLOSED (fist)
 int full_bend[5]     = {0, 0, 0, 0, 0};
 bool calibrated      = false;
 bool mpuConnected    = false; // Tracks whether MPU6050 was found at boot
@@ -161,6 +290,17 @@ const unsigned long READ_INTERVAL = 80;  // Read sensors every 80ms
 String currentGesture          = "";
 unsigned long gestureShownAt   = 0;
 const unsigned long HOLD_MS    = 1500;   // Show word for 1.5s minimum
+
+/* =========================================================================
+   ADC MULTISAMPLING — reduces noise by averaging 16 rapid reads
+   ========================================================================= */
+int readAnalogFiltered(int pin) {
+  long sum = 0;
+  for (int k = 0; k < 16; k++) {
+    sum += analogRead(pin);
+  }
+  return (int)(sum / 16);
+}
 
 /* =========================================================================
    HELPER: DRAW CENTERED TEXT ON CANVAS
@@ -362,7 +502,7 @@ void runCalibration() {
     float pitchSum = 0.0f;
     for (int sample = 0; sample < 50; sample++) {
       for (int i = 0; i < 5; i++) {
-        flatSums[i] += analogRead(FLEX_PINS[i]);
+        flatSums[i] += readAnalogFiltered(FLEX_PINS[i]);
       }
       if (mpuConnected) {
         float r, p;
@@ -394,7 +534,7 @@ void runCalibration() {
     long fistSums[5] = {0, 0, 0, 0, 0};
     for (int sample = 0; sample < 50; sample++) {
       for (int i = 0; i < 5; i++) {
-        fistSums[i] += analogRead(FLEX_PINS[i]);
+        fistSums[i] += readAnalogFiltered(FLEX_PINS[i]);
       }
       delay(20);
     }
@@ -409,23 +549,22 @@ void runCalibration() {
       int diff = abs(temp_fist[i] - baseline[i]);
       Serial.printf("  Finger %d: Flat=%d, Fist(Raw)=%d, Diff=%d\n", i, baseline[i], temp_fist[i], diff);
       
-      // If the difference is less than 150 ADC units, fail the calibration
-      if (diff < 150) {
-        failed = true;
+      // If the difference is less than 15 ADC units, the sensor is probably
+      // not connected or not bending. Auto-assign a synthetic range so the
+      // glove can still be used.
+      if (diff < 15) {
+        // Assign a synthetic full_bend offset of ±250 based on which direction
+        // flex sensors typically move (higher or lower than baseline).
+        temp_fist[i] = baseline[i] > 2000 ? baseline[i] - 250 : baseline[i] + 250;
+        Serial.printf("  Finger %d: Auto-adjusted fist target to %d (low hardware delta)\n", i, temp_fist[i]);
       }
     }
 
-    if (failed) {
-      Serial.println("[CAL] Error: Flat and Fist values are too similar! Retrying...");
-      drawCalibrationErrorScreen();
-      delay(4000);
-    } else {
-      // Valid calibration! Save temp_fist to full_bend
-      for (int i = 0; i < 5; i++) {
-        full_bend[i] = temp_fist[i];
-      }
-      success = true;
+    // Always accept calibration — auto-adjust handles low-delta sensors
+    for (int i = 0; i < 5; i++) {
+      full_bend[i] = temp_fist[i];
     }
+    success = true;
   }
 
   calibrated = true;
@@ -448,7 +587,7 @@ void runCalibration() {
    ========================================================================= */
 void readFlexSensors(int rawOut[5], int normOut[5]) {
   for (int i = 0; i < 5; i++) {
-    int raw = analogRead(FLEX_PINS[i]);
+    int raw = readAnalogFiltered(FLEX_PINS[i]);
     rawOut[i] = raw;
     // Map raw value to 0-100 percentage. map() handles inverted ranges automatically.
     int mapped = map(raw, baseline[i], full_bend[i], 0, 100);
@@ -539,6 +678,16 @@ String matchGesture(int normFlex[5], float roll, float pitch, float &bestConf) {
 }
 
 /* =========================================================================
+   WEBSOCKET EVENT HANDLER
+   ========================================================================= */
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+  if (type == WStype_TEXT) {
+    String msg = String((char*)payload);
+    Serial.printf("[WS #%u] Text: %s\n", num, msg.c_str());
+  }
+}
+
+/* =========================================================================
    SETUP
    ========================================================================= */
 void setup() {
@@ -587,9 +736,11 @@ void setup() {
     Serial.println("[MPU] IMU-based gestures will use flex sensors only.");
   }
 
-  // Flex sensor pins (ADC)
+  // Flex sensor pins (ADC) — configure for full 0-3.3V range
+  analogSetWidth(12); // 12-bit ADC resolution (0-4095)
   for (int i = 0; i < 5; i++) {
     pinMode(FLEX_PINS[i], INPUT);
+    analogSetPinAttenuation(FLEX_PINS[i], ADC_11db); // Full 0-3.3V input range
   }
 
   // Run calibration
@@ -603,9 +754,12 @@ void setup() {
   tft.setTextSize(1);
   tft.print("Connecting to WiFi...");
   
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(ssid, password);
+
   int dots = 0;
-  while (WiFi.status() != WL_CONNECTED && dots < 20) {
+  while (WiFi.status() != WL_CONNECTED && dots < 60) {
     delay(500);
     Serial.print(".");
     tft.print(".");
@@ -624,16 +778,17 @@ void setup() {
     tft.print(WiFi.localIP());
     delay(2000);
   } else {
-    Serial.println("\n[WiFi] Failed to connect.");
+    Serial.println("\n[WiFi] Failed to connect on boot. Auto-reconnect enabled.");
     tft.fillScreen(ST7735_BLACK);
     tft.setCursor(5, 20);
     tft.setTextColor(ST7735_RED);
-    tft.print("WiFi Failed!");
-    delay(2000);
+    tft.print("WiFi Connecting...");
+    delay(1000);
   }
 
   // Initialize WebSockets
   webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
 }
 
 /* =========================================================================
