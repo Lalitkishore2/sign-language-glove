@@ -681,9 +681,33 @@ String matchGesture(int normFlex[5], float roll, float pitch, float &bestConf) {
    WEBSOCKET EVENT HANDLER
    ========================================================================= */
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
-  if (type == WStype_TEXT) {
-    String msg = String((char*)payload);
-    Serial.printf("[WS #%u] Text: %s\n", num, msg.c_str());
+  switch(type) {
+    case WStype_DISCONNECTED:
+      Serial.printf("[WS #%u] Client Disconnected\n", num);
+      break;
+    case WStype_CONNECTED: {
+      IPAddress ip = webSocket.remoteIP(num);
+      Serial.printf("[WS #%u] Client Connected from %d.%d.%d.%d\n", num, ip[0], ip[1], ip[2], ip[3]);
+      // Send connection acknowledgement packet to Kinex web client
+      webSocket.sendTXT(num, "{\"status\":\"CONNECTED\",\"device\":\"KINEX_SMART_GLOVE\"}");
+      break;
+    }
+    case WStype_TEXT: {
+      String msg = String((char*)payload);
+      msg.trim();
+      Serial.printf("[WS #%u] Text/Command: %s\n", num, msg.c_str());
+      
+      if (msg.equalsIgnoreCase("CALIBRATE") || msg.equalsIgnoreCase("RECALIBRATE") || msg.equalsIgnoreCase("C")) {
+        Serial.println("[WS] Remote calibration command received! Starting calibration...");
+        webSocket.sendTXT(num, "{\"status\":\"CALIBRATING\"}");
+        appState = STATE_CALIBRATING;
+      } else if (msg.equalsIgnoreCase("PING")) {
+        webSocket.sendTXT(num, "{\"status\":\"PONG\"}");
+      }
+      break;
+    }
+    default:
+      break;
   }
 }
 
